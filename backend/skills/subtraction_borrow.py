@@ -1,18 +1,49 @@
-"""Subtraction with borrowing.
-
-Bug-rule detectors (`detect_no_borrow_smaller_from_larger`,
-`detect_off_by_ten_in_borrow`, `detect_reversed_operands`) belong to the
-"BKT + bug rules" task and will be added to `BUG_RULES` there — this task
-only builds the problem template.
-"""
+"""Subtraction with borrowing."""
 
 import random
 
 from backend.models.state import Problem
-from backend.skills._arithmetic import bucket, default_rng, format_question, has_any_borrow, random_n_digit
+from backend.skills._arithmetic import (
+    bucket,
+    default_rng,
+    digits,
+    format_question,
+    has_any_borrow,
+    parse_operands,
+    random_n_digit,
+)
 
 SKILL_TAG = "subtraction_borrow"
-BUG_RULES: list[tuple[str, object]] = []
+
+
+def detect_reversed_operands(problem: Problem, answer: int) -> bool:
+    """Answer equals b - a instead of a - b."""
+    a, _op, b = parse_operands(problem.question)
+    reversed_answer = b - a
+    return answer == reversed_answer and reversed_answer != problem.correct_answer
+
+
+def detect_no_borrow_smaller_from_larger(problem: Problem, answer: int) -> bool:
+    """Answer matches subtracting digit-wise with abs() on each column
+    instead of borrowing from the next place."""
+    a, _op, b = parse_operands(problem.question)
+    width = max(len(str(a)), len(str(b)))
+    buggy_digits = [abs(da - db) for da, db in zip(digits(a, width), digits(b, width))]
+    buggy_answer = sum(d * 10**i for i, d in enumerate(buggy_digits))
+    return answer == buggy_answer and buggy_answer != problem.correct_answer
+
+
+def detect_off_by_ten_in_borrow(problem: Problem, answer: int) -> bool:
+    """Answer is exactly 10 off from the correct result — a slip in the
+    borrowed place (every problem this skill generates requires a borrow)."""
+    return abs(answer - problem.correct_answer) == 10
+
+
+BUG_RULES: list[tuple[str, object]] = [
+    ("reversed_operands", detect_reversed_operands),
+    ("no_borrow_smaller_from_larger", detect_no_borrow_smaller_from_larger),
+    ("off_by_ten_in_borrow", detect_off_by_ten_in_borrow),
+]
 
 _WIDTH_BY_BUCKET = {"easy": 2, "medium": 2, "hard": 3}
 _MAX_ATTEMPTS = 200
