@@ -23,7 +23,7 @@ After completing any task from "Task breakdown" below, append a short entry to C
 - **Backend**: Python 3.11+, LangGraph for state orchestration, FastAPI for serving
 - **Frontend**: plain React (Vite) or vanilla HTML/CSS/JS, whichever is faster to stand up
 - **Storage**: SQLite (or plain JSON files) for session/student state, no external DB
-- **LLM**: single provider, called only from the four functions listed under "LLM touchpoints"
+- **LLM**: OpenAI API, called only from the four functions listed under "LLM touchpoints"
 - **Testing**: pytest for the deterministic core (curriculum, generation, grading, BKT update, bug-rule detection)
 - **Dependency management**: uv (`pyproject.toml` / `uv.lock`) — use `uv add <pkg>` / `uv add --dev <pkg>` to add dependencies, `uv run <cmd>` to run things
 
@@ -90,6 +90,11 @@ class SessionState(BaseModel):
     engagement: EngagementState
     next_action: Literal["new_problem", "repeat_skill", "advance_skill", "hint"]
 
+```
+
+**Note on `LastResponse.correct`**: this field is required by the schema, but when a caller submits a new answer to the graph, its value is provisional — the caller does not compute correctness. `grade_and_diagnose` is the sole source of truth: the graph's grading node overwrites `last_response.correct` with the diagnosis result before `update_mastery` reads it. Callers should submit any placeholder value (e.g. `False`) and never rely on their own `correct` value downstream.
+
+```python
 class BKTParams(BaseModel):
     p_init: float = 0.3
     p_transit: float = 0.15
