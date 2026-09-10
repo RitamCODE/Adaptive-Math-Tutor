@@ -3,6 +3,7 @@ name = "adaptive-math-tutor"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
+    "langgraph>=1.2.11",
     "pydantic",
 ]
 
