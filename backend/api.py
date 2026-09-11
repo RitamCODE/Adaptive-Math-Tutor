@@ -19,8 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.graph import app as graph_app
+from backend.llm import narrative
 from backend.models.bkt import MASTERY_THRESHOLD
-from backend.models.state import EngagementState, LastResponse, SessionState
+from backend.models.state import EngagementState, LastResponse, Problem, SessionState
 from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
@@ -33,6 +34,10 @@ app.add_middleware(
 )
 
 _SESSIONS: dict[str, SessionState] = {}
+
+# Narrative/attempt-tracking state, same non-persistence caveat as _SESSIONS.
+_FLAVOR_TEXT: dict[str, str | None] = {}
+_ATTEMPTS: dict[str, dict[str, dict]] = {}
 
 
 class StartSessionRequest(BaseModel):
@@ -48,6 +53,7 @@ class ProblemOut(BaseModel):
     question: str
     skill_tag: str
     difficulty: float
+    flavor_text: str | None = None
 
 
 class SkillProgress(BaseModel):
@@ -71,6 +77,9 @@ class Feedback(BaseModel):
     bug_type: str | None
     correct_answer: int
     skill_tag: str
+    reward_narrative: str | None = None
+    mastery_narrative: str | None = None
+    boss_battle_narrative: str | None = None
 
 
 class AnswerResponse(SessionResponse):
@@ -95,6 +104,7 @@ def _to_session_response(state: SessionState) -> SessionResponse:
             question=state.current_problem.question,
             skill_tag=state.current_problem.skill_tag,
             difficulty=state.current_problem.difficulty,
+            flavor_text=_FLAVOR_TEXT.get(state.session_id),
         )
         if state.current_problem is not None
         else None
@@ -106,6 +116,17 @@ def _to_session_response(state: SessionState) -> SessionResponse:
         engagement=state.engagement,
         skill_progress=_skill_progress(state.skill_mastery),
         next_action=state.next_action,
+    )
+
+
+def _refresh_flavor_text(session_id: str, problem: Problem | None) -> None:
+    """Touchpoint 1: cache a one-line story wrapper for the current problem
+    so repeated GETs don't re-invoke the LLM or return a different story."""
+    if problem is None:
+        _FLAVOR_TEXT.pop(session_id, None)
+        return
+    _FLAVOR_TEXT[session_id] = narrative.flavor_word_problem(
+        problem.question, problem.correct_answer, problem.skill_tag, problem.difficulty
     )
 
 
@@ -130,6 +151,7 @@ def start_session(req: StartSessionRequest) -> SessionResponse:
     )
     new_state = SessionState.model_validate(graph_app.invoke(initial_state.model_dump()))
     _SESSIONS[new_state.session_id] = new_state
+    _refresh_flavor_text(new_state.session_id, new_state.current_problem)
     return _to_session_response(new_state)
 
 
@@ -156,6 +178,33 @@ def submit_answer(session_id: str, req: AnswerRequest) -> AnswerResponse:
     )
     new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
     _SESSIONS[session_id] = new_state
+    _refresh_flavor_text(session_id, new_state.current_problem)
+
+    skill_attempts = _ATTEMPTS.setdefault(session_id, {})
+    record = skill_attempts.setdefault(problem.skill_tag, {"count": 0, "total_time_sec": 0.0})
+    record["count"] += 1
+    record["total_time_sec"] += req.time_taken_sec
+
+    reward_narrative = None
+    if diagnosis.correct:
+        reward_narrative = narrative.effort_reward_narrative(
+            problem.skill_tag, record["count"], record["total_time_sec"] / record["count"]
+        )
+
+    mastery_narrative = None
+    boss_battle_narrative = None
+    if new_state.next_action == "advance_skill":
+        mastered_skill = problem.skill_tag
+        skill_misconceptions = [
+            m for m in new_state.misconception_log if m.skill == mastered_skill
+        ]
+        mastery_narrative = narrative.mastery_moment_narrative(
+            mastered_skill, skill_misconceptions, record["count"]
+        )
+        if new_state.current_problem is not None:
+            boss_battle_narrative = narrative.boss_battle_narrative(
+                new_state.current_problem.skill_tag
+            )
 
     base = _to_session_response(new_state)
     return AnswerResponse(
@@ -165,5 +214,8 @@ def submit_answer(session_id: str, req: AnswerRequest) -> AnswerResponse:
             bug_type=diagnosis.bug_type,
             correct_answer=problem.correct_answer,
             skill_tag=problem.skill_tag,
+            reward_narrative=reward_narrative,
+            mastery_narrative=mastery_narrative,
+            boss_battle_narrative=boss_battle_narrative,
         ),
     )

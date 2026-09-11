@@ -12,6 +12,7 @@ def test_start_session_bootstraps_first_problem():
 
     assert body["current_problem"]["skill_tag"] == "addition_no_carry"
     assert "correct_answer" not in body["current_problem"]
+    assert body["current_problem"]["flavor_text"] is None
 
     progress = {entry["skill"]: entry for entry in body["skill_progress"]}
     assert progress["addition_no_carry"]["unlocked"] is True
@@ -32,6 +33,9 @@ def test_submit_correct_answer_updates_mastery_and_feedback():
 
     assert body["feedback"]["correct"] is True
     assert body["engagement"]["xp"] == 10
+    assert body["feedback"]["reward_narrative"] is None
+    assert body["feedback"]["mastery_narrative"] is None
+    assert body["feedback"]["boss_battle_narrative"] is None
 
     progress = {entry["skill"]: entry for entry in body["skill_progress"]}
     assert progress["addition_no_carry"]["mastery"] > 0.3
