@@ -14,10 +14,35 @@ selection never depend on any of this.
 
 import logging
 import os
+from pathlib import Path
 
 from backend.models.state import Misconception
 
 logger = logging.getLogger(__name__)
+
+
+def _load_dotenv() -> None:
+    """Populate os.environ from a repo-root .env file, if present.
+
+    Minimal, dependency-free stand-in for python-dotenv (CLAUDE.md requires
+    asking before adding a new library). Existing environment variables take
+    precedence over the file.
+    """
+    env_path = Path(__file__).resolve().parents[2] / ".env"
+    if not env_path.is_file():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+_load_dotenv()
 
 _MODEL = os.environ.get("OPENAI_NARRATIVE_MODEL", "gpt-4o-mini")
 _TIMEOUT_SEC = 5.0

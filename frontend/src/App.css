@@ -18,8 +18,15 @@
 .student-id-form,
 .problem-card {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: center;
+}
+
+.problem-flavor-text {
+  flex-basis: 100%;
+  font-style: italic;
+  color: #4b5563;
 }
 
 .student-id-form input,

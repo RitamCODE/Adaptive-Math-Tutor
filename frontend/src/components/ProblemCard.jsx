@@ -12,6 +12,7 @@ export default function ProblemCard({ problem, onSubmit, loading }) {
 
   return (
     <form className="problem-card" onSubmit={handleSubmit}>
+      {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
       <div className="problem-question">{problem.question}</div>
       <input
         type="number"
