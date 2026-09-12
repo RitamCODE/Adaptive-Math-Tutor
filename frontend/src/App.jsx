@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getSession, startSession, submitAnswer } from "./api";
+import { getSession, getNarrative, startSession, submitAnswer } from "./api";
 import StudentIdForm from "./components/StudentIdForm";
 import ProblemCard from "./components/ProblemCard";
-import FeedbackBanner from "./components/FeedbackBanner";
 import SkillTrailMap from "./components/SkillTrailMap";
 import StatsBar from "./components/StatsBar";
 import Mascot from "./components/Mascot";
@@ -35,7 +34,7 @@ export default function App() {
 
   useEffect(() => {
     problemStartRef.current = Date.now();
-  }, [sessionData?.current_problem?.question, sessionData?.current_problem?.skill_tag]);
+  }, [sessionData?.current_problem?.problem_id]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -60,11 +59,21 @@ export default function App() {
     const timeTakenSec = (Date.now() - problemStartRef.current) / 1000;
     setLoading(true);
     setError(null);
-    submitAnswer(sessionData.session_id, answer, timeTakenSec)
+    const sessionId = sessionData.session_id;
+    submitAnswer(sessionId, answer, timeTakenSec)
       .then((data) => {
         setSessionData(data);
         setFeedback(data.feedback);
         setJustAdvanced(data.next_action === "advance_skill");
+        // Off the submit-to-verdict critical path: fire-and-forget, merge in
+        // whenever the narrative text resolves (it may already be cached).
+        getNarrative(sessionId)
+          .then((narrativeData) => {
+            setFeedback((prev) =>
+              prev && prev.problem_id === data.feedback.problem_id ? { ...prev, ...narrativeData } : prev
+            );
+          })
+          .catch(() => {});
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -75,6 +84,7 @@ export default function App() {
   }
 
   const masteredCount = sessionData?.skill_progress?.filter((entry) => entry.mastered).length ?? 0;
+  const questComplete = sessionData && sessionData.next_action === "end_session";
 
   return (
     <div className="app-shell">
@@ -95,14 +105,19 @@ export default function App() {
             <SkillTrailMap skillProgress={sessionData.skill_progress} />
           </div>
           <div className="main-panel">
-            {feedback && <FeedbackBanner feedback={feedback} justAdvanced={justAdvanced} />}
-            {sessionData.current_problem && (
-              <ProblemCard
-                problem={sessionData.current_problem}
-                onSubmit={handleSubmitAnswer}
-                loading={loading}
-                flashState={reaction === "idle" ? null : reaction}
-              />
+            {questComplete ? (
+              <div className="problem-card quest-complete">Quest complete! Nice work today.</div>
+            ) : (
+              sessionData.current_problem && (
+                <ProblemCard
+                  problem={sessionData.current_problem}
+                  onSubmit={handleSubmitAnswer}
+                  loading={loading}
+                  flashState={reaction === "idle" ? null : reaction}
+                  feedback={feedback}
+                  justAdvanced={justAdvanced}
+                />
+              )
             )}
           </div>
         </>

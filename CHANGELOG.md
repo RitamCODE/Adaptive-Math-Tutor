@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-12 — Retry ladder, quest termination, latency split, number pad (revision-plan 1.1–1.4, 6.1)
+
+Implemented the three-attempt retry ladder (`SessionState.attempt_number`/`attempt_history`, new `retry_problem`/`demote_skill`/`end_session` routing in `graph.py`), quest termination (`problems_completed >= quest_length`, 2 skills mastered, or 4 consecutive wrong via a new `EngagementState.consecutive_wrong` field — CLAUDE.md's schema updated to match), and non-signal (blank/rapid-guess) handling that skips BKT and the attempt counter. Fixed a real constraint-#7 violation where `Feedback.correct_answer` was sent unconditionally on wrong answers. Split the three narrative LLM calls off `submit_answer` into a new `GET /sessions/{id}/narrative` endpoint, and found/fixed a second latency bug where flavor-text prefetch was still blocking every submission (including redundant re-generation on every retry attempt) — moved to `BackgroundTasks`, skipped when the problem hasn't changed. Replaced `<input type="number">` with a `NumberPad` component. `backend/tests/test_retry_ladder.py` added (written and confirmed red before implementation); verified live end-to-end in-browser (attempt ladder, root-skill demotion fallback, fatigue-stop terminal screen, sub-15ms submit latency) with no console errors.
+
 ## 2026-09-11 — Backend README + frontend README refresh
 
 Added `backend/README.md` documenting the LangGraph turn cycle (entry/grading/advance-repeat routing), data models, BKT, the skill/bug-rule module contract, the four LLM touchpoints, the HTTP API's response shaping, and how it connects to the frontend. Also fixed `frontend/README.md`, which had gone stale after the UI redesign below — it still referenced the removed `SkillMap.jsx` and claimed no responsive work existed.

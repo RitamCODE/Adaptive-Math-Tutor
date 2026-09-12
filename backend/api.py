@@ -10,11 +10,16 @@ Session state lives in an in-memory dict keyed by session_id. This matches
 CLAUDE.md's non-goal of "no persistence beyond current session/local
 storage" — but it means state is lost on restart and isn't shared across
 processes, so run uvicorn with a single worker only.
+
+Latency budget (CLAUDE.md constraint #6): `submit_answer` makes zero LLM
+calls. The three narrative touchpoints that used to run synchronously here
+now live behind a separate `GET /sessions/{id}/narrative`, which the
+frontend fetches right after rendering the instant verdict.
 """
 
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -23,6 +28,7 @@ from backend.llm import narrative
 from backend.models.bkt import MASTERY_THRESHOLD
 from backend.models.state import EngagementState, LastResponse, Problem, SessionState
 from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
+from backend.nodes.remediation import build_remediation
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
 app = FastAPI(title="Adaptive Math Tutor API")
@@ -37,7 +43,10 @@ _SESSIONS: dict[str, SessionState] = {}
 
 # Narrative/attempt-tracking state, same non-persistence caveat as _SESSIONS.
 _FLAVOR_TEXT: dict[str, str | None] = {}
+_FLAVOR_TEXT_PROBLEM_ID: dict[str, str] = {}
 _ATTEMPTS: dict[str, dict[str, dict]] = {}
+_NARRATIVE_CONTEXT: dict[str, dict] = {}
+_NARRATIVE_CACHE: dict[str, tuple[str, "NarrativeOut"]] = {}
 
 
 class StartSessionRequest(BaseModel):
@@ -45,11 +54,12 @@ class StartSessionRequest(BaseModel):
 
 
 class AnswerRequest(BaseModel):
-    answer: int
+    answer: int | None
     time_taken_sec: float
 
 
 class ProblemOut(BaseModel):
+    problem_id: str
     question: str
     skill_tag: str
     difficulty: float
@@ -73,17 +83,25 @@ class SessionResponse(BaseModel):
 
 
 class Feedback(BaseModel):
+    problem_id: str
     correct: bool
     bug_type: str | None
-    correct_answer: int
+    hint: str | None
+    visual: str | None
+    attempts_remaining: int
+    reveal_answer: bool
+    correct_answer: int | None = None  # never sent before attempt 3, per CLAUDE.md constraint #7
     skill_tag: str
-    reward_narrative: str | None = None
-    mastery_narrative: str | None = None
-    boss_battle_narrative: str | None = None
 
 
 class AnswerResponse(SessionResponse):
     feedback: Feedback
+
+
+class NarrativeOut(BaseModel):
+    reward_narrative: str | None = None
+    mastery_narrative: str | None = None
+    boss_battle_narrative: str | None = None
 
 
 def _skill_progress(mastery: dict[str, float]) -> list[SkillProgress]:
@@ -101,6 +119,7 @@ def _skill_progress(mastery: dict[str, float]) -> list[SkillProgress]:
 def _to_session_response(state: SessionState) -> SessionResponse:
     problem = (
         ProblemOut(
+            problem_id=state.current_problem.problem_id,
             question=state.current_problem.question,
             skill_tag=state.current_problem.skill_tag,
             difficulty=state.current_problem.difficulty,
@@ -120,11 +139,21 @@ def _to_session_response(state: SessionState) -> SessionResponse:
 
 
 def _refresh_flavor_text(session_id: str, problem: Problem | None) -> None:
-    """Touchpoint 1: cache a one-line story wrapper for the current problem
-    so repeated GETs don't re-invoke the LLM or return a different story."""
+    """Touchpoint 1: cache a one-line story wrapper for the current problem.
+
+    Off the submit-to-verdict critical path (CLAUDE.md constraint #6) —
+    callers schedule this via BackgroundTasks rather than awaiting it, so
+    the HTTP response never blocks on an LLM call. Skipped entirely when
+    the problem hasn't changed (the retry-ladder case), since the same
+    problem doesn't need a new story on every wrong attempt.
+    """
     if problem is None:
         _FLAVOR_TEXT.pop(session_id, None)
+        _FLAVOR_TEXT_PROBLEM_ID.pop(session_id, None)
         return
+    if _FLAVOR_TEXT_PROBLEM_ID.get(session_id) == problem.problem_id:
+        return
+    _FLAVOR_TEXT_PROBLEM_ID[session_id] = problem.problem_id
     _FLAVOR_TEXT[session_id] = narrative.flavor_word_problem(
         problem.question, problem.correct_answer, problem.skill_tag, problem.difficulty
     )
@@ -137,8 +166,12 @@ def _get_session(session_id: str) -> SessionState:
     return state
 
 
+def _is_signal(answer: int | None, time_taken_sec: float) -> bool:
+    return answer is not None and time_taken_sec >= 2.0
+
+
 @app.post("/sessions", response_model=SessionResponse)
-def start_session(req: StartSessionRequest) -> SessionResponse:
+def start_session(req: StartSessionRequest, background_tasks: BackgroundTasks) -> SessionResponse:
     initial_state = SessionState(
         student_id=req.student_id,
         session_id=uuid4().hex,
@@ -146,12 +179,12 @@ def start_session(req: StartSessionRequest) -> SessionResponse:
         misconception_log=[],
         current_problem=None,
         last_response=None,
-        engagement=EngagementState(streak=0, xp=0, frustration_signal=False),
+        engagement=EngagementState(streak=0, xp=0, frustration_signal=False, consecutive_wrong=0),
         next_action="new_problem",
     )
     new_state = SessionState.model_validate(graph_app.invoke(initial_state.model_dump()))
     _SESSIONS[new_state.session_id] = new_state
-    _refresh_flavor_text(new_state.session_id, new_state.current_problem)
+    background_tasks.add_task(_refresh_flavor_text, new_state.session_id, new_state.current_problem)
     return _to_session_response(new_state)
 
 
@@ -161,61 +194,111 @@ def get_session(session_id: str) -> SessionResponse:
 
 
 @app.post("/sessions/{session_id}/answer", response_model=AnswerResponse)
-def submit_answer(session_id: str, req: AnswerRequest) -> AnswerResponse:
+def submit_answer(session_id: str, req: AnswerRequest, background_tasks: BackgroundTasks) -> AnswerResponse:
     state = _get_session(session_id)
     if state.current_problem is None:
         raise HTTPException(status_code=400, detail="no problem is currently active for this session")
 
     problem = state.current_problem
-    diagnosis = pure_grade_and_diagnose(problem, req.answer)
 
     state = state.model_copy(
         update={
-            "last_response": LastResponse(
-                answer=req.answer, correct=False, time_taken_sec=req.time_taken_sec
-            )
+            "last_response": LastResponse(answer=req.answer, correct=False, time_taken_sec=req.time_taken_sec)
         }
     )
+
+    if not _is_signal(req.answer, req.time_taken_sec):
+        # Non-signal submission: no grading call, no BKT update, no attempt consumed.
+        new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
+        _SESSIONS[session_id] = new_state
+        feedback = Feedback(
+            problem_id=problem.problem_id,
+            correct=False,
+            bug_type=None,
+            hint=None,
+            visual=None,
+            attempts_remaining=max(0, 3 - state.attempt_number),
+            reveal_answer=False,
+            skill_tag=problem.skill_tag,
+        )
+        base = _to_session_response(new_state)
+        return AnswerResponse(**base.model_dump(), feedback=feedback)
+
+    diagnosis = pure_grade_and_diagnose(problem, req.answer, state.attempt_number)
+    remediation = build_remediation(diagnosis, state.attempt_number)
+
     new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
     _SESSIONS[session_id] = new_state
-    _refresh_flavor_text(session_id, new_state.current_problem)
+    background_tasks.add_task(_refresh_flavor_text, session_id, new_state.current_problem)
 
     skill_attempts = _ATTEMPTS.setdefault(session_id, {})
     record = skill_attempts.setdefault(problem.skill_tag, {"count": 0, "total_time_sec": 0.0})
     record["count"] += 1
     record["total_time_sec"] += req.time_taken_sec
 
-    reward_narrative = None
+    context_id = uuid4().hex
+    narrative_context: dict = {}
     if diagnosis.correct:
-        reward_narrative = narrative.effort_reward_narrative(
-            problem.skill_tag, record["count"], record["total_time_sec"] / record["count"]
-        )
-
-    mastery_narrative = None
-    boss_battle_narrative = None
+        narrative_context["reward"] = {
+            "skill_tag": problem.skill_tag,
+            "attempt_count": record["count"],
+            "avg_time_sec": record["total_time_sec"] / record["count"],
+        }
     if new_state.next_action == "advance_skill":
         mastered_skill = problem.skill_tag
-        skill_misconceptions = [
-            m for m in new_state.misconception_log if m.skill == mastered_skill
-        ]
-        mastery_narrative = narrative.mastery_moment_narrative(
-            mastered_skill, skill_misconceptions, record["count"]
-        )
+        narrative_context["mastery"] = {
+            "skill": mastered_skill,
+            "misconceptions": [m for m in new_state.misconception_log if m.skill == mastered_skill],
+            "attempt_count": record["count"],
+        }
         if new_state.current_problem is not None:
-            boss_battle_narrative = narrative.boss_battle_narrative(
-                new_state.current_problem.skill_tag
-            )
+            narrative_context["boss_battle"] = {"skill": new_state.current_problem.skill_tag}
+    _NARRATIVE_CONTEXT[session_id] = {"context_id": context_id, **narrative_context}
 
     base = _to_session_response(new_state)
     return AnswerResponse(
         **base.model_dump(),
         feedback=Feedback(
+            problem_id=diagnosis.problem_id,
             correct=diagnosis.correct,
             bug_type=diagnosis.bug_type,
-            correct_answer=problem.correct_answer,
+            hint=remediation.hint,
+            visual=remediation.visual,
+            attempts_remaining=diagnosis.attempts_remaining,
+            reveal_answer=remediation.reveal_answer,
+            correct_answer=problem.correct_answer if (diagnosis.correct or remediation.reveal_answer) else None,
             skill_tag=problem.skill_tag,
-            reward_narrative=reward_narrative,
-            mastery_narrative=mastery_narrative,
-            boss_battle_narrative=boss_battle_narrative,
         ),
     )
+
+
+@app.get("/sessions/{session_id}/narrative", response_model=NarrativeOut)
+def get_narrative(session_id: str) -> NarrativeOut:
+    """Off the submit-to-verdict critical path (CLAUDE.md constraint #6).
+    The frontend fetches this right after rendering the instant verdict from
+    `submit_answer` and merges the result in when it resolves."""
+    context = _NARRATIVE_CONTEXT.get(session_id)
+    if context is None:
+        return NarrativeOut()
+
+    context_id = context["context_id"]
+    cached = _NARRATIVE_CACHE.get(session_id)
+    if cached is not None and cached[0] == context_id:
+        return cached[1]
+
+    result = NarrativeOut()
+    if "reward" in context:
+        reward = context["reward"]
+        result.reward_narrative = narrative.effort_reward_narrative(
+            reward["skill_tag"], reward["attempt_count"], reward["avg_time_sec"]
+        )
+    if "mastery" in context:
+        mastery = context["mastery"]
+        result.mastery_narrative = narrative.mastery_moment_narrative(
+            mastery["skill"], mastery["misconceptions"], mastery["attempt_count"]
+        )
+    if "boss_battle" in context:
+        result.boss_battle_narrative = narrative.boss_battle_narrative(context["boss_battle"]["skill"])
+
+    _NARRATIVE_CACHE[session_id] = (context_id, result)
+    return result

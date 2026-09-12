@@ -120,26 +120,23 @@ body {
   text-align: left;
 }
 
-.student-id-form input,
-.problem-card input {
+.student-id-form input {
   padding: 0.6rem 0.8rem;
   font-size: 1.05rem;
   width: min(10rem, 100%);
   border-radius: var(--radius-md);
   border: 2px solid var(--color-locked);
-  min-height: 44px;
+  min-height: 48px;
   background: var(--color-bg);
   color: var(--color-ink);
 }
 
-.student-id-form input:focus,
-.problem-card input:focus {
+.student-id-form input:focus {
   outline: none;
   border-color: var(--color-coral);
 }
 
-.student-id-form button,
-.problem-card button {
+.student-id-form button {
   padding: 0.6rem 1.4rem;
   font-size: 1.05rem;
   font-weight: 700;
@@ -147,22 +144,92 @@ body {
   border: none;
   background: var(--color-coral);
   color: white;
-  min-height: 44px;
+  min-height: 48px;
   cursor: pointer;
   transition:
     transform 120ms ease,
     opacity 120ms ease;
 }
 
-.student-id-form button:disabled,
-.problem-card button:disabled {
+.student-id-form button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.student-id-form button:not(:disabled):hover,
-.problem-card button:not(:disabled):hover {
+.student-id-form button:not(:disabled):hover {
   transform: translateY(-1px);
+}
+
+/* Number pad */
+
+.number-pad {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.number-pad-display {
+  min-height: 48px;
+  min-width: 6rem;
+  padding: 0.4rem 1rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-locked);
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+.number-pad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.number-pad-key {
+  min-width: 64px;
+  min-height: 64px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: 2px solid var(--color-locked);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.number-pad-key:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.number-pad-key:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.number-pad-key-back {
+  background: var(--color-gold-soft);
+}
+
+.number-pad-key-submit {
+  grid-column: span 1;
+  background: var(--color-coral);
+  color: white;
+  border-color: var(--color-coral);
+}
+
+.quest-complete {
+  font-size: 1.3rem;
+  font-weight: 700;
+  justify-content: center;
+  text-align: center;
 }
 
 .problem-flavor-text {

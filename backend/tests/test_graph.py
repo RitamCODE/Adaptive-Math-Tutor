@@ -14,7 +14,7 @@ def _initial_state() -> SessionState:
         misconception_log=[],
         current_problem=None,
         last_response=None,
-        engagement=EngagementState(streak=0, xp=0, frustration_signal=False),
+        engagement=EngagementState(streak=0, xp=0, frustration_signal=False, consecutive_wrong=0),
         next_action="new_problem",
     )
 
@@ -26,16 +26,21 @@ def test_bootstrap_generates_first_problem_for_empty_session():
     assert result.next_action == "new_problem"
 
 
-def test_repeat_skill_path_on_wrong_answer():
+def test_wrong_answer_on_attempt_1_keeps_same_problem():
     state = _invoke(_initial_state())
     skill = state.current_problem.skill_tag
+    problem_id = state.current_problem.problem_id
     wrong_answer = state.current_problem.correct_answer + 1
 
-    state = state.model_copy(update={"last_response": LastResponse(answer=wrong_answer, correct=False, time_taken_sec=5.0)})
+    state = state.model_copy(
+        update={"last_response": LastResponse(answer=wrong_answer, correct=False, time_taken_sec=5.0)}
+    )
     result = _invoke(state)
 
     assert result.current_problem.skill_tag == skill
-    assert result.next_action == "repeat_skill"
+    assert result.current_problem.problem_id == problem_id
+    assert result.next_action == "retry_problem"
+    assert result.attempt_number == 2
     assert result.skill_mastery[skill] < 0.3
 
 

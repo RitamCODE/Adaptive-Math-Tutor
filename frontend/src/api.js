@@ -27,3 +27,7 @@ export function submitAnswer(sessionId, answer, timeTakenSec) {
     body: JSON.stringify({ answer, time_taken_sec: timeTakenSec }),
   }).then(handle);
 }
+
+export function getNarrative(sessionId) {
+  return fetch(`${API_BASE}/sessions/${sessionId}/narrative`).then(handle);
+}

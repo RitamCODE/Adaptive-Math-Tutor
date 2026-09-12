@@ -1,4 +1,6 @@
 import { useState } from "react";
+import NumberPad from "./NumberPad";
+import FeedbackBanner from "./FeedbackBanner";
 
 const CONFETTI_ANGLES = [
   { angle: -60, color: "coral" },
@@ -11,21 +13,19 @@ const CONFETTI_ANGLES = [
   { angle: 180, color: "gold" },
 ];
 
-export default function ProblemCard({ problem, onSubmit, loading, flashState }) {
+export default function ProblemCard({ problem, onSubmit, loading, flashState, feedback, justAdvanced }) {
   const [answer, setAnswer] = useState("");
 
-  function handleSubmit(event) {
-    event.preventDefault();
+  function handleSubmit() {
     if (answer.trim() === "") return;
     onSubmit(Number(answer));
     setAnswer("");
   }
 
+  const feedbackForThisProblem = feedback && feedback.problem_id === problem.problem_id ? feedback : null;
+
   return (
-    <form
-      className={`problem-card${flashState ? ` problem-card-${flashState}` : ""}`}
-      onSubmit={handleSubmit}
-    >
+    <div className={`problem-card${flashState ? ` problem-card-${flashState}` : ""}`}>
       {flashState === "correct" && (
         <div className="confetti-burst" aria-hidden="true">
           {CONFETTI_ANGLES.map((particle, index) => (
@@ -39,17 +39,10 @@ export default function ProblemCard({ problem, onSubmit, loading, flashState }) 
       )}
       {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
       <div className="problem-question">{problem.question}</div>
-      <input
-        type="number"
-        value={answer}
-        onChange={(event) => setAnswer(event.target.value)}
-        placeholder="?"
-        autoFocus
-        disabled={loading}
-      />
-      <button type="submit" disabled={loading || answer.trim() === ""}>
-        Submit
-      </button>
-    </form>
+      {feedbackForThisProblem && (
+        <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} />
+      )}
+      <NumberPad value={answer} onChange={setAnswer} onSubmit={handleSubmit} disabled={loading} />
+    </div>
   );
 }
