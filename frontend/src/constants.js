@@ -1,8 +1,8 @@
 export const SKILL_DISPLAY_NAMES = {
   addition_no_carry: "Addition (no carrying)",
-  addition_carry: "Addition with Carrying",
+  addition_carry: "Addition with carrying",
   subtraction_no_borrow: "Subtraction (no borrowing)",
-  subtraction_borrow: "Subtraction with Borrowing",
+  subtraction_borrow: "Subtraction with borrowing",
 };
 
 export const BUG_TYPE_HINTS = {

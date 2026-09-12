@@ -35,8 +35,9 @@ src/
     StudentIdForm.jsx      start-session form
     ProblemCard.jsx         current problem + numeric answer input
     FeedbackBanner.jsx      correct/incorrect feedback + misconception hint
-    SkillMap.jsx            per-skill mastery bars, locked/mastered state
+    SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes
     StatsBar.jsx            XP, streak, frustration note
+    Mascot.jsx              growth-stage companion that reacts to answers
 ```
 
 ## How it fits together
@@ -46,12 +47,13 @@ src/
 `App` holds:
 - `sessionData` — the last `SessionResponse`/`AnswerResponse` from the backend (current problem, engagement, skill progress, session id)
 - `feedback` — the `Feedback` object from the most recent answer (`null` before the first answer)
+- `reaction` — derived from `feedback.correct`, drives both `Mascot`'s transient correct/incorrect pose and `ProblemCard`'s flash/shake/confetti, then reverts to `"idle"` after a fixed timeout
 - `loading` / `error` — request status
 - `problemStartRef` — a timestamp ref reset whenever a new problem appears, used to measure `time_taken_sec`
 
 `api.js` is the only module that calls the backend. Its three functions (`startSession`, `getSession`, `submitAnswer`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
 
-`constants.js` exists because the backend deliberately only sends raw tags (`skill_tag`, `bug_type`), not display text — `SKILL_DISPLAY_NAMES` and `BUG_TYPE_HINTS` translate those tags into what `SkillMap` and `FeedbackBanner` actually render.
+`constants.js` exists because the backend deliberately only sends raw tags (`skill_tag`, `bug_type`), not display text — `SKILL_DISPLAY_NAMES` and `BUG_TYPE_HINTS` translate those tags into what `SkillTrailMap` and `FeedbackBanner` actually render.
 
 ### Start / resume a session
 
@@ -60,8 +62,8 @@ On mount, `App` checks `localStorage` for a cached `session_id`. If one exists, 
 ### Answering a problem
 
 `ProblemCard` collects a numeric answer and calls `onSubmit(answer)`. `App` computes `time_taken_sec` from `problemStartRef` (reset via a `useEffect` keyed on the current problem's `question` + `skill_tag`, so it resets exactly when a new problem is served — including after a wrong answer, an advance, or a repeat), calls `submitAnswer(sessionId, answer, timeTakenSec)`, and on success:
-- updates `sessionData` — re-renders `StatsBar` (xp/streak) and `SkillMap` (mastery bars, locked/mastered state) with the new values
-- sets `feedback` — renders `FeedbackBanner`, which shows a mastery-moment message when the response's `next_action` is `"advance_skill"`
+- updates `sessionData` — re-renders `StatsBar` (xp/streak) and `SkillTrailMap` (node states) with the new values, and `Mascot` (growth stage, from the count of mastered skills) with it
+- sets `feedback` — renders `FeedbackBanner`, which shows a mastery-moment message when the response's `next_action` is `"advance_skill"`, and drives `reaction` (above)
 
 ## Backend contract
 
@@ -69,4 +71,4 @@ This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse
 
 ## Known limitations
 
-No auth — one student per browser, identified by whatever name is typed into the start form and cached in `localStorage`. No mobile/responsive layout work. Session state lives only in the backend's in-memory store, so restarting the backend process ends every in-progress session.
+No auth — one student per browser, identified by whatever name is typed into the start form and cached in `localStorage`. Responsive layout covers standard mobile/tablet/laptop viewport reflow only (see `UI_DESIGN.md` at the repo root) — no native-app gestures, device detection, or installable/PWA behavior. Session state lives only in the backend's in-memory store, so restarting the backend process ends every in-progress session.

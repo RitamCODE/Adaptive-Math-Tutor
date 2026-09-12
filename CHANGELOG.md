@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-11 — Backend README + frontend README refresh
+
+Added `backend/README.md` documenting the LangGraph turn cycle (entry/grading/advance-repeat routing), data models, BKT, the skill/bug-rule module contract, the four LLM touchpoints, the HTTP API's response shaping, and how it connects to the frontend. Also fixed `frontend/README.md`, which had gone stale after the UI redesign below — it still referenced the removed `SkillMap.jsx` and claimed no responsive work existed.
+
+## 2026-09-11 — Frontend redesign per UI_DESIGN.md
+
+Implemented the design from `UI_DESIGN.md`: a growth-stage SVG/CSS mascot (`Mascot.jsx`, 5 stages keyed to mastered-skill count, with idle/correct/incorrect reactions), `SkillMap.jsx` replaced by `SkillTrailMap.jsx` (a winding node trail with locked/current/mastered states and a conic-gradient mastery ring), a warm 3-accent CSS custom-property palette, sticky streak/XP pill chips, and non-punishing confetti/shake feedback animations — all CSS/inline-SVG, no new dependencies. Also made the layout responsive (mobile single column, tablet fluid scaling, ≥1024px two-region grid), which required revising CLAUDE.md's non-goals (mobile-responsive polish was previously out of scope; the user asked for it explicitly, so constraint 4 and the non-goals list were both updated). Verified end-to-end in-browser across mobile/tablet/laptop viewport sizes, including a live BKT mastery transition and both correct/incorrect answer paths.
+
 ## 2026-09-10 — Surface LLM narratives in the frontend
 
 `backend/api.py` was already returning `flavor_text`, `reward_narrative`, `mastery_narrative`, and `boss_battle_narrative`, but `ProblemCard.jsx`/`FeedbackBanner.jsx` never rendered them — the UI showed the same hardcoded "Correct!"/"Skill mastered" strings regardless of what the LLM produced. Wired all four fields into the two components (with the original hardcoded strings kept only as the fail-open fallback when a field is `None`); verified live against a real `OPENAI_API_KEY` that each field now carries model-generated, per-response text. Also added a repo-root `.env` loader in `backend/llm/narrative.py` (dependency-free, since a new library needs sign-off per CLAUDE.md) so the key doesn't need to be exported manually per shell session.

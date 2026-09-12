@@ -11,7 +11,14 @@ A K-5 adaptive math learning app for the Nerdy AI Hackathon (Prompt 01: K-5 Math
 1. **No LLM calls in the grading, mastery-update, or curriculum-selection path, ever.** These must be deterministic functions. Correctness of math grading cannot depend on model output.
 2. **LLM calls are restricted to exactly these four use cases** (see "LLM touchpoints" below). Do not add an LLM call anywhere else in the codebase without asking first.
 3. **Do not introduce additional agents, orchestration layers, or frameworks beyond what's listed in "Tech stack."** If you think a fifth node or a new library would help, propose it and wait for confirmation before implementing.
-4. **Frontend stays minimal.** Time budget goes into the adaptive engine (curriculum, mastery model, misconception detection), not UI polish. A working, plain interface beats a polished one that ships late.
+4. **Frontend polish is now in scope, within the existing stack.** The adaptive engine
+   (curriculum, mastery model, misconception detection) is built. Remaining time before
+   the Sep 18 deadline may go into UI/UX polish, but only via CSS, layout, and existing
+   libraries already in the stack, no new dependencies, no image/asset pipeline, no new
+   framework. If a design idea would require either, stop and ask first, same as any
+   other deviation from this file. This includes responsive layout across mobile,
+   tablet, and laptop viewports — CSS media queries, relative units, and flexible
+   layout only, still no new dependency.
 5. **Keep node functions pure where possible.** Given the same state and inputs, a node should produce the same output. This makes the system testable without mocking an LLM.
 
 ## Changelog
@@ -168,6 +175,5 @@ Before adding any LLM call outside this list, apply this test: does the generate
 - User authentication or accounts beyond a single local student ID
 - Persistence beyond the current session/local storage
 - Multi-student or classroom features
-- Mobile-responsive design polish
 - Any subject beyond math for the actual demo (the architecture should be subject-agnostic in principle, but do not build a second subject module for this submission)
 

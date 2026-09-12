@@ -3,16 +3,19 @@ import { getSession, startSession, submitAnswer } from "./api";
 import StudentIdForm from "./components/StudentIdForm";
 import ProblemCard from "./components/ProblemCard";
 import FeedbackBanner from "./components/FeedbackBanner";
-import SkillMap from "./components/SkillMap";
+import SkillTrailMap from "./components/SkillTrailMap";
 import StatsBar from "./components/StatsBar";
+import Mascot from "./components/Mascot";
 import "./App.css";
 
 const SESSION_STORAGE_KEY = "adaptive-math-tutor:session_id";
+const REACTION_DURATION_MS = 1600;
 
 export default function App() {
   const [sessionData, setSessionData] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [justAdvanced, setJustAdvanced] = useState(false);
+  const [reaction, setReaction] = useState("idle");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [resuming, setResuming] = useState(true);
@@ -33,6 +36,13 @@ export default function App() {
   useEffect(() => {
     problemStartRef.current = Date.now();
   }, [sessionData?.current_problem?.question, sessionData?.current_problem?.skill_tag]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    setReaction(feedback.correct ? "correct" : "incorrect");
+    const timer = setTimeout(() => setReaction("idle"), REACTION_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [feedback]);
 
   function handleStart(studentId) {
     setLoading(true);
@@ -64,6 +74,8 @@ export default function App() {
     return <div className="app-shell">Loading…</div>;
   }
 
+  const masteredCount = sessionData?.skill_progress?.filter((entry) => entry.mastered).length ?? 0;
+
   return (
     <div className="app-shell">
       <h1>Adaptive Math Tutor</h1>
@@ -74,15 +86,25 @@ export default function App() {
       ) : (
         <>
           <StatsBar engagement={sessionData.engagement} />
-          <SkillMap skillProgress={sessionData.skill_progress} />
-          {feedback && <FeedbackBanner feedback={feedback} justAdvanced={justAdvanced} />}
-          {sessionData.current_problem && (
-            <ProblemCard
-              problem={sessionData.current_problem}
-              onSubmit={handleSubmitAnswer}
-              loading={loading}
+          <div className="side-panel">
+            <Mascot
+              masteredCount={masteredCount}
+              reaction={reaction}
+              frustration={sessionData.engagement.frustration_signal}
             />
-          )}
+            <SkillTrailMap skillProgress={sessionData.skill_progress} />
+          </div>
+          <div className="main-panel">
+            {feedback && <FeedbackBanner feedback={feedback} justAdvanced={justAdvanced} />}
+            {sessionData.current_problem && (
+              <ProblemCard
+                problem={sessionData.current_problem}
+                onSubmit={handleSubmitAnswer}
+                loading={loading}
+                flashState={reaction === "idle" ? null : reaction}
+              />
+            )}
+          </div>
         </>
       )}
     </div>
