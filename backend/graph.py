@@ -105,6 +105,12 @@ def hold_non_signal_node(state: SessionState) -> dict:
 
 
 def update_mastery_node(state: SessionState) -> dict:
+    """Skips the BKT update for `digit_reversal`: CLAUDE.md says the
+    underlying skill is intact and mastery must not be penalized, even
+    though the wrong answer still consumes an attempt and goes through the
+    normal retry ladder (handled elsewhere — this node only owns mastery)."""
+    if state.attempt_history and state.attempt_history[-1][1] == "digit_reversal":
+        return {}
     skill = state.current_problem.skill_tag
     new_mastery = bkt_update_mastery(state.skill_mastery, skill, state.last_response.correct, BKTParams())
     return {"skill_mastery": new_mastery}

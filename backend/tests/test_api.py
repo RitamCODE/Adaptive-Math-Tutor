@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.api import _SESSIONS, app
+from backend.logging import events
 
 client = TestClient(app)
 
@@ -93,3 +94,24 @@ def test_narrative_endpoint_populates_reward_narrative_slot_after_correct_answer
 def test_unknown_session_returns_404():
     response = client.get("/sessions/does-not-exist")
     assert response.status_code == 404
+
+
+def test_submit_answer_logs_an_event_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(events, "DEFAULT_DB_PATH", tmp_path / "events.db")
+
+    start = client.post("/sessions", json={"student_id": "s6"})
+    session_id = start.json()["session_id"]
+    correct_answer = _SESSIONS[session_id].current_problem.correct_answer
+    wrong_answer = correct_answer + 1
+
+    response = client.post(
+        f"/sessions/{session_id}/answer",
+        json={"answer": wrong_answer, "time_taken_sec": 5.0},
+    )
+    assert response.status_code == 200
+
+    rows = events.fetch_events(db_path=tmp_path / "events.db")
+    assert len(rows) == 1
+    assert rows[0]["session_id"] == session_id
+    assert rows[0]["submitted_answer"] == wrong_answer
+    assert rows[0]["signal"] == 1

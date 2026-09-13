@@ -16,20 +16,20 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] Correct on attempt 2 or 3 is celebrated with effort framing, not treated as a failure. — effort-framing text is ready to test (needs `OPENAI_API_KEY` set; falls back to "Correct!" otherwise).
 - [ ] At no point in attempts 1 or 2 does the correct answer appear anywhere, including in the network response payload. — ready to test (2026-09-12); also fixes a real bug where this previously fired unconditionally.
 
-### C. Diagnosis quality
+### C. Diagnosis quality — ready to test (2026-09-13)
 
-- [ ] `86 + 94 → 1017` returns `ADD_CONCAT_NO_CARRY` with a hint that names the carry, not the answer.
-- [ ] `86 + 94 → 170` returns `ADD_CARRY_DROPPED`.
-- [ ] `42 - 17 → 35` returns a subtraction bug, not `UNCLASSIFIED`.
-- [ ] Answer 51 when the answer is 15: returns `DIGIT_REVERSAL`, hint mentions order, mastery score is unchanged.
-- [ ] An answer matching no rule returns a procedural nudge and opens the manipulative. It never returns "the answer was X."
-- [ ] Every bug id in the catalog has a hint under 12 words. Check by script, not by eye.
+- [ ] `86 + 94 → 1017` returns `add_concat_no_carry` with a hint that names the carry, not the answer.
+- [ ] `86 + 94 → 70` returns `no_carry` (the existing "column overflow truncated mod 10" rule — kept under its original name rather than CLAUDE.md's catalog spelling `add_carry_dropped`, by request).
+- [ ] `42 - 17 → 35` returns `no_borrow_smaller_from_larger`, not `unclassified`.
+- [ ] Answer 51 when the answer is 15: returns `digit_reversal`, hint mentions order, mastery score is unchanged (verified in `test_retry_ladder.py`).
+- [ ] An answer matching no rule returns a procedural nudge and opens the manipulative (once Part 4 renders `visual`). It never returns "the answer was X."
+- [x] Every bug id in the catalog has a hint under 12 words — machine-checked in `backend/tests/test_misconceptions_catalog.py`, not by eye.
 
 ### D. Non-signals
 
 - [ ] Submit blank: no attempt consumed, no BKT update.
-- [ ] Submit three answers in under two seconds: `RAPID_GUESS`, no BKT update, mascot redirects to the blocks.
-- [ ] Confirm in the event log that these rows exist and are flagged, not silently dropped.
+- [ ] Submit three answers in under two seconds: held as non-signal (`signal: false` in the event log, not a bug_type — CLAUDE.md's catalog has no `RAPID_GUESS` entry), no BKT update, mascot redirects to the blocks (mascot behavior is Part 4/6 scope).
+- [x] Confirm in the event log that these rows exist and are flagged, not silently dropped — ready to test (2026-09-13): `event_log.db`, `signal` column is 0 for blank/rapid-guess rows, `backend/tests/test_events.py` covers this.
 
 ### E. Session actually ends
 

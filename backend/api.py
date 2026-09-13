@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from backend.graph import app as graph_app
 from backend.llm import narrative
+from backend.logging import events
 from backend.models.bkt import MASTERY_THRESHOLD
 from backend.models.state import EngagementState, LastResponse, Problem, SessionState
 from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
@@ -211,6 +212,21 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
         # Non-signal submission: no grading call, no BKT update, no attempt consumed.
         new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
         _SESSIONS[session_id] = new_state
+        background_tasks.add_task(
+            events.log_submission,
+            session_id=session_id,
+            student_id=state.student_id,
+            problem_id=problem.problem_id,
+            skill_tag=problem.skill_tag,
+            question=problem.question,
+            submitted_answer=req.answer,
+            correct_answer=problem.correct_answer,
+            attempt=state.attempt_number,
+            correct=False,
+            bug_type=None,
+            signal=False,
+            time_taken_sec=req.time_taken_sec,
+        )
         feedback = Feedback(
             problem_id=problem.problem_id,
             correct=False,
@@ -230,6 +246,21 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
     new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
     _SESSIONS[session_id] = new_state
     background_tasks.add_task(_refresh_flavor_text, session_id, new_state.current_problem)
+    background_tasks.add_task(
+        events.log_submission,
+        session_id=session_id,
+        student_id=state.student_id,
+        problem_id=problem.problem_id,
+        skill_tag=problem.skill_tag,
+        question=problem.question,
+        submitted_answer=req.answer,
+        correct_answer=problem.correct_answer,
+        attempt=state.attempt_number,
+        correct=diagnosis.correct,
+        bug_type=diagnosis.bug_type,
+        signal=True,
+        time_taken_sec=req.time_taken_sec,
+    )
 
     skill_attempts = _ATTEMPTS.setdefault(session_id, {})
     record = skill_attempts.setdefault(problem.skill_tag, {"count": 0, "total_time_sec": 0.0})

@@ -1,0 +1,54 @@
+{
+  "add_concat_no_carry": {
+    "hint": "You added each column right, but forgot to carry the ten.",
+    "visual": "base10_blocks/ones_overflow"
+  },
+  "no_carry": {
+    "hint": "You carried, but then dropped it before adding it in.",
+    "visual": "base10_blocks/carry_dropped"
+  },
+  "add_carry_wrong_column": {
+    "hint": "That carry belongs in the tens place, not the ones.",
+    "visual": "base10_blocks/carry_wrong_column"
+  },
+  "add_off_by_one": {
+    "hint": "So close! Recount that last step carefully.",
+    "visual": "number_line/count_on"
+  },
+  "add_used_subtraction": {
+    "hint": "Check the sign: this problem needs addition, not subtraction.",
+    "visual": "number_line/operator_check"
+  },
+  "reversed_operands": {
+    "hint": "Subtract the bottom number from the top, not backward.",
+    "visual": "number_line/operand_order"
+  },
+  "no_borrow_smaller_from_larger": {
+    "hint": "When a digit is smaller, borrow instead of just subtracting backward.",
+    "visual": "base10_blocks/needs_borrow"
+  },
+  "off_by_ten_in_borrow": {
+    "hint": "You borrowed, but the tens digit still needs to shrink.",
+    "visual": "base10_blocks/borrow_no_decrement"
+  },
+  "sub_zero_minus_n": {
+    "hint": "Zero minus a number isn't that number; borrow first instead.",
+    "visual": "base10_blocks/zero_minuend"
+  },
+  "sub_borrow_across_zero": {
+    "hint": "Borrowing past a zero? Keep going to the next column.",
+    "visual": "base10_blocks/borrow_across_zero"
+  },
+  "digit_reversal": {
+    "hint": "Right digits, wrong order: check which one comes first.",
+    "visual": "number_line/digit_order"
+  },
+  "place_value_confusion": {
+    "hint": "Check your place values; a digit landed in the wrong spot.",
+    "visual": "base10_blocks/place_value"
+  },
+  "unclassified": {
+    "hint": "Let's redo this one column at a time, starting with the ones.",
+    "visual": "base10_blocks/unclassified"
+  }
+}

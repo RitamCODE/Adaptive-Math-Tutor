@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-13 — Misconception catalog and event log (revision-plan Parts 2 and 3)
+
+Added `backend/content/misconceptions.json` (hint + visual per bug_type, replacing the
+inline stopgap dict in `diagnosis.py`) and six new bug-rule detectors reaching CLAUDE.md's
+full catalog: `add_concat_no_carry` (the `86 + 94 -> 1017` acceptance case),
+`add_carry_wrong_column`, `add_off_by_one`, `add_used_subtraction` in `addition_carry.py`;
+`sub_zero_minus_n` and `sub_borrow_across_zero` in `subtraction_borrow.py`; plus a new
+skill-agnostic `backend/skills/cross_cutting.py` for `digit_reversal` and
+`place_value_confusion`, dispatched after each skill's own rules in `grade_and_diagnose`.
+The four pre-existing detectors (`no_carry`, `reversed_operands`,
+`no_borrow_smaller_from_larger`, `off_by_ten_in_borrow`) keep their original names by
+request rather than being renamed to CLAUDE.md's catalog spelling. `digit_reversal`'s
+"mastery is not penalized" requirement is handled in `graph.py`'s `update_mastery_node`,
+which skips the BKT call when the just-recorded bug_type is `digit_reversal` while still
+running the normal attempt/retry ladder. Also added `backend/logging/events.py`, a
+SQLite event log (one row per submission, signal-bearing or not) wired into
+`api.py`'s `submit_answer` via `BackgroundTasks` so it stays off the latency-critical
+path. Every hint is machine-checked at ≤12 words in `test_misconceptions_catalog.py`
+rather than eyeballed. 20 new tests; full suite (105) green.
+
 ## 2026-09-12 — Retry ladder, quest termination, latency split, number pad (revision-plan 1.1–1.4, 6.1)
 
 Implemented the three-attempt retry ladder (`SessionState.attempt_number`/`attempt_history`, new `retry_problem`/`demote_skill`/`end_session` routing in `graph.py`), quest termination (`problems_completed >= quest_length`, 2 skills mastered, or 4 consecutive wrong via a new `EngagementState.consecutive_wrong` field — CLAUDE.md's schema updated to match), and non-signal (blank/rapid-guess) handling that skips BKT and the attempt counter. Fixed a real constraint-#7 violation where `Feedback.correct_answer` was sent unconditionally on wrong answers. Split the three narrative LLM calls off `submit_answer` into a new `GET /sessions/{id}/narrative` endpoint, and found/fixed a second latency bug where flavor-text prefetch was still blocking every submission (including redundant re-generation on every retry attempt) — moved to `BackgroundTasks`, skipped when the problem hasn't changed. Replaced `<input type="number">` with a `NumberPad` component. `backend/tests/test_retry_ladder.py` added (written and confirmed red before implementation); verified live end-to-end in-browser (attempt ladder, root-skill demotion fallback, fatigue-stop terminal screen, sub-15ms submit latency) with no console errors.

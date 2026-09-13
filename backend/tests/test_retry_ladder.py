@@ -121,6 +121,20 @@ def test_blank_answer_does_not_consume_attempt_or_update_bkt():
     assert result.engagement.consecutive_wrong == 0
 
 
+def test_digit_reversal_wrong_answer_consumes_attempt_but_not_mastery():
+    state = _mid_skill_state()
+    reversed_answer = int(str(state.current_problem.correct_answer)[::-1])  # 85 -> 58
+
+    diagnosis = grade_and_diagnose(state.current_problem, reversed_answer, attempt=1)
+    assert diagnosis.bug_type == "digit_reversal"
+
+    result = _submit(state, reversed_answer)
+
+    assert result.attempt_number == 2
+    assert result.next_action == "retry_problem"
+    assert result.skill_mastery["addition_carry"] == 0.3
+
+
 def test_four_consecutive_wrong_ends_session():
     state = _mid_skill_state()
 
