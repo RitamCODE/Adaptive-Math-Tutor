@@ -28,13 +28,15 @@ uv run uvicorn backend.api:app --reload --port 8000
 src/
   main.jsx              mounts <App /> into #root
   App.jsx                the single state owner — see "How it fits together" below
-  api.js                  fetch wrappers for the three backend endpoints
-  constants.js            skill display names + bug-type hint text (presentation only)
+  api.js                  fetch wrappers for the four backend endpoints
+  constants.js            skill display names (presentation only — misconception hint
+                           text now comes pre-rendered from the backend, see below)
   App.css                 all styling; no CSS framework
   components/
     StudentIdForm.jsx      start-session form
-    ProblemCard.jsx         current problem + numeric answer input
-    FeedbackBanner.jsx      correct/incorrect feedback + misconception hint
+    ProblemCard.jsx         current problem + flavor text + feedback + NumberPad
+    NumberPad.jsx           on-screen digit/backspace/submit pad — no <input type="number"> anywhere
+    FeedbackBanner.jsx      correct/incorrect feedback + misconception hint + narrative copy
     SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes
     StatsBar.jsx            XP, streak, frustration note
     Mascot.jsx              growth-stage companion that reacts to answers
@@ -45,15 +47,17 @@ src/
 `App.jsx` is the only component that holds state or talks to `api.js`. Everything under `components/` is presentational: it receives data as props and reports user actions through callback props (`onStart`, `onSubmit`). There's no context provider and no global store — data flows down as props, actions flow up as callbacks, and `App` is the single place that reconciles a callback with a new `fetch` call and a state update.
 
 `App` holds:
-- `sessionData` — the last `SessionResponse`/`AnswerResponse` from the backend (current problem, engagement, skill progress, session id)
-- `feedback` — the `Feedback` object from the most recent answer (`null` before the first answer)
+- `sessionData` — the last `SessionResponse`/`AnswerResponse` from the backend (current problem, engagement, skill progress, session id, `next_action`)
+- `feedback` — the `Feedback` object from the most recent answer (`null` before the first answer), later merged with whatever `getNarrative` resolves to
+- `justAdvanced` — set from `data.next_action === "advance_skill"` on each answer response; tells `FeedbackBanner` to show the mastery-moment and boss-battle lines alongside the ordinary correct message
 - `reaction` — derived from `feedback.correct`, drives both `Mascot`'s transient correct/incorrect pose and `ProblemCard`'s flash/shake/confetti, then reverts to `"idle"` after a fixed timeout
 - `loading` / `error` — request status
-- `problemStartRef` — a timestamp ref reset whenever a new problem appears, used to measure `time_taken_sec`
+- `resuming` — true only during the initial mount's `getSession` resume check, so nothing renders as "start a new session" for a frame before that resolves
+- `problemStartRef` — a timestamp ref reset whenever the current problem's `problem_id` changes, used to measure `time_taken_sec`
 
-`api.js` is the only module that calls the backend. Its three functions (`startSession`, `getSession`, `submitAnswer`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
+`api.js` is the only module that calls the backend. Its four functions (`startSession`, `getSession`, `submitAnswer`, `getNarrative`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
 
-`constants.js` exists because the backend deliberately only sends raw tags (`skill_tag`, `bug_type`), not display text — `SKILL_DISPLAY_NAMES` and `BUG_TYPE_HINTS` translate those tags into what `SkillTrailMap` and `FeedbackBanner` actually render.
+`constants.js` exists because the backend deliberately sends the raw `skill_tag` rather than display text — `SKILL_DISPLAY_NAMES` is what `SkillTrailMap` uses to render a skill's name instead of its tag. Misconception copy is different: `Feedback.hint` already arrives from the backend as finished, display-ready text (backed by `content/misconceptions.json` on the backend side), so `FeedbackBanner` renders it directly — there's no client-side hint lookup to keep in sync when a new bug rule is added.
 
 ### Start / resume a session
 
@@ -61,13 +65,16 @@ On mount, `App` checks `localStorage` for a cached `session_id`. If one exists, 
 
 ### Answering a problem
 
-`ProblemCard` collects a numeric answer and calls `onSubmit(answer)`. `App` computes `time_taken_sec` from `problemStartRef` (reset via a `useEffect` keyed on the current problem's `question` + `skill_tag`, so it resets exactly when a new problem is served — including after a wrong answer, an advance, or a repeat), calls `submitAnswer(sessionId, answer, timeTakenSec)`, and on success:
-- updates `sessionData` — re-renders `StatsBar` (xp/streak) and `SkillTrailMap` (node states) with the new values, and `Mascot` (growth stage, from the count of mastered skills) with it
-- sets `feedback` — renders `FeedbackBanner`, which shows a mastery-moment message when the response's `next_action` is `"advance_skill"`, and drives `reaction` (above)
+A student types on `NumberPad` (digits, backspace, submit — no `<input type="number">` anywhere, per `CLAUDE.md`'s constraint that an answer must be computed, not spun to). Submitting calls `ProblemCard`'s `onSubmit(answer)`. `App` computes `time_taken_sec` from `problemStartRef` (reset via a `useEffect` keyed on `current_problem.problem_id`, so it resets exactly when a new problem is served, but *not* on a same-problem retry), calls `submitAnswer(sessionId, answer, timeTakenSec)`, and on success:
+- updates `sessionData` — re-renders `StatsBar` (xp/streak) and `SkillTrailMap` (node states) with the new values, and `Mascot` (growth stage, from the count of mastered skills)
+- sets `feedback` and `justAdvanced` (from `next_action === "advance_skill"`) — renders `FeedbackBanner`, which shows the mastery-moment/boss-battle lines only when `justAdvanced` is true, and drives `reaction` (above)
+- fires `getNarrative(sessionId)` fire-and-forget, off the response that already rendered — when it resolves, its fields are merged into `feedback` (guarded on `problem_id` still matching, so a narrative that resolves after the student has already moved to a new problem doesn't get attached to the wrong one)
+
+Because a wrong answer on attempt 1 or 2 keeps the *same* `problem_id` (the retry ladder — see `backend/README.md`), `problemStartRef` intentionally does not reset in that case, and `FeedbackBanner` re-renders inside the same `ProblemCard` rather than a new one.
 
 ## Backend contract
 
-This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`) and to the specific skill and bug-type tags currently hardcoded in `constants.js`. If a new skill or misconception rule is added on the backend, add a matching entry there — an unrecognized tag doesn't break anything, it just falls back to the raw tag string (`SkillMap`) or a generic hint (`FeedbackBanner`).
+This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`, `NarrativeOut`) and to the skill tags hardcoded in `constants.js`'s `SKILL_DISPLAY_NAMES`. If a new skill is added on the backend, add a matching entry there — an unrecognized `skill_tag` doesn't break anything, `SkillTrailMap` just falls back to rendering the raw tag string. Misconception hint text is not a frontend concern at all: `Feedback.hint` arrives pre-rendered from the backend's `content/misconceptions.json`, so a new bug rule needs no frontend change to display its hint.
 
 ## Known limitations
 
