@@ -22,6 +22,16 @@ The engine is built. The remaining work is a revision pass specified in `docs/re
 
 After completing any task from "Task breakdown" below, append a short entry to CHANGELOG.md (create it if it doesn't exist) with the date, what changed, and why. Keep entries to 2-3 lines. Do not narrate exploration or dead ends, only what actually landed.
 
+## Plan mode output
+
+Write plan mode output in whatever shape fits the task, sections, numbered steps, prose, as normal. This rule governs the writing inside it, not its structure.
+
+Rule: the first time any specific thing appears, a function name, a file, an exact number, an edge case, a library term, the sentence introducing it says what it does in plain words, in that same sentence or the one right before it. After that, use it freely without re-explaining.
+
+Test before writing anything: if someone could point at a specific noun and ask "what's that," and the plan doesn't answer in the same breath, rewrite it before moving on.
+
+This applies to every part of the plan, including verification and edge cases. Nothing gets cut to simplify, if a detail is worth including, it's worth one clause explaining what it is before you use it.
+
 ## Tech stack
 
 - **Backend**: Python 3.11+, LangGraph for state orchestration, FastAPI for serving
