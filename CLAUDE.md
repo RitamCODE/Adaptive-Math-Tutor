@@ -6,7 +6,7 @@ Read this fully before writing any code. This file is the source of truth for ar
 
 A K-5 adaptive math learning app for the Nerdy AI Hackathon (Prompt 01: K-5 Math Game). A deterministic state machine tracks per-skill mastery via Bayesian Knowledge Tracing, generates problems calibrated to the student's level, diagnoses the specific misconception behind wrong answers using rule-based bug detection, and drives a skill-tree progression system off that real mastery data. A small, fixed set of LLM calls handles natural language generation only. Everything else is plain, fast, deterministic Python.
 
-The engine is built. The remaining work is a revision pass specified in `docs/PLAN.md`, whose purpose is to make the existing intelligence visible to the student. Read the relevant Part of that file before starting a task. Do not read the whole file unless asked.
+The engine is built. The remaining work is a revision pass specified in `docs/revision-plan.md`, whose purpose is to make the existing intelligence visible to the student. Read the relevant Part of that file before starting a task. Do not read the whole file unless asked.
 
 ## Hard constraints, do not violate these
 
@@ -65,7 +65,7 @@ adaptive-math-tutor/
   frontend/
     (problem display, number pad, manipulative canvas, skill map, XP/streak)
   docs/
-    PLAN.md
+    revision-plan.md
     CHECKLIST.md
   CLAUDE.md
 ```
@@ -261,14 +261,14 @@ The engine below is complete. Do not rebuild it.
 - [x] Minimal frontend
 - [x] LLM touchpoints
 
-Remaining work, per `docs/PLAN.md`:
+Remaining work, per `docs/revision-plan.md`:
 
 - [ ] **Retry ladder and session termination** (Plan Part 1). *Acceptance: a wrong answer keeps the same problem on screen, never reveals the answer on attempt 1 or 2, and a full quest reaches a terminal summary screen.*
 - [ ] **Misconception catalog** (Plan Parts 2 and 3). *Acceptance: every bug_type above fires on a known wrong answer in a unit test, and `86 + 94 -> 1017` returns `add_concat_no_carry`.*
 - [ ] **Manipulatives** (Plan Part 4). *Acceptance: `86 + 94` is solvable end to end by dragging, on touch, and the fading bands change behavior between the `new` and `fluent` seeds.*
 - [ ] **UI shell** (Plan Part 6). *Acceptance: number pad, quest map, mascot, end-of-quest report, full session playable at 1024 x 768.*
 - [ ] **Demo readiness** (Plan Part 7). *Acceptance: all three seeds load from a URL, refresh mid-session recovers, LangSmith shows traces for all four touchpoints.*
-- [ ] **Demo polish**: record the 2-3 minute walkthrough per the demo script in `docs/PLAN.md`.
+- [ ] **Demo polish**: record the 2-3 minute walkthrough per the demo script in `docs/revision-plan.md`.
 
 Verification for all of the above lives in `docs/CHECKLIST.md`. Flag items as ready to test; do not tick them yourself, most are visual.
 
