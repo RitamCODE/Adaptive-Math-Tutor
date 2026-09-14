@@ -1,6 +1,9 @@
 import { useState } from "react";
 import NumberPad from "./NumberPad";
 import FeedbackBanner from "./FeedbackBanner";
+import BundlingSticks from "./BundlingSticks";
+
+const BUNDLING_STICKS_SKILLS = new Set(["addition_carry", "subtraction_borrow"]);
 
 const CONFETTI_ANGLES = [
   { angle: -60, color: "coral" },
@@ -13,7 +16,15 @@ const CONFETTI_ANGLES = [
   { angle: 180, color: "gold" },
 ];
 
-export default function ProblemCard({ problem, onSubmit, loading, flashState, feedback, justAdvanced }) {
+export default function ProblemCard({
+  problem,
+  onSubmit,
+  loading,
+  flashState,
+  feedback,
+  justAdvanced,
+  skillProgress,
+}) {
   const [answer, setAnswer] = useState("");
 
   function handleSubmit() {
@@ -23,6 +34,8 @@ export default function ProblemCard({ problem, onSubmit, loading, flashState, fe
   }
 
   const feedbackForThisProblem = feedback && feedback.problem_id === problem.problem_id ? feedback : null;
+  const mastery = skillProgress?.find((entry) => entry.skill === problem.skill_tag)?.mastery ?? 0;
+  const showBundlingSticks = BUNDLING_STICKS_SKILLS.has(problem.skill_tag);
 
   return (
     <div className={`problem-card${flashState ? ` problem-card-${flashState}` : ""}`}>
@@ -41,6 +54,9 @@ export default function ProblemCard({ problem, onSubmit, loading, flashState, fe
       <div className="problem-question">{problem.question}</div>
       {feedbackForThisProblem && (
         <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} />
+      )}
+      {showBundlingSticks && (
+        <BundlingSticks problem={problem} feedback={feedbackForThisProblem} mastery={mastery} />
       )}
       <NumberPad value={answer} onChange={setAnswer} onSubmit={handleSubmit} disabled={loading} />
     </div>

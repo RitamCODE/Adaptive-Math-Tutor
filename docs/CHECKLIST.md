@@ -11,7 +11,7 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 ### B. Retry loop
 
 - [ ] Wrong on attempt 1: the same problem stays on screen, the answer is not shown, a specific hint appears. — ready to test (2026-09-12)
-- [ ] Wrong on attempt 2: the manipulative opens automatically, pre-loaded with the wrong answer. — NOT ready: manipulatives (Part 4) aren't built yet; the `visual` payload key is populated but nothing renders it.
+- [ ] Wrong on attempt 2: the manipulative opens automatically, pre-loaded with the wrong answer. — ready to test (2026-09-14) for `addition_carry`/`subtraction_borrow` (the `base10_blocks/*` visual family); `number_line/*` bug types still render hint-text only, by design (separate manipulative, not yet built).
 - [ ] Wrong on attempt 3: worked solution plays, then the next problem is on the *prerequisite* skill, not the same one. — routing to the prerequisite is ready to test; the "worked solution plays" animation is NOT ready (Part 4/6).
 - [ ] Correct on attempt 2 or 3 is celebrated with effort framing, not treated as a failure. — effort-framing text is ready to test (needs `OPENAI_API_KEY` set; falls back to "Correct!" otherwise).
 - [ ] At no point in attempts 1 or 2 does the correct answer appear anywhere, including in the network response payload. — ready to test (2026-09-12); also fixes a real bug where this previously fired unconditionally.
@@ -22,7 +22,7 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] `86 + 94 → 70` returns `no_carry` (the existing "column overflow truncated mod 10" rule — kept under its original name rather than CLAUDE.md's catalog spelling `add_carry_dropped`, by request).
 - [ ] `42 - 17 → 35` returns `no_borrow_smaller_from_larger`, not `unclassified`.
 - [ ] Answer 51 when the answer is 15: returns `digit_reversal`, hint mentions order, mastery score is unchanged (verified in `test_retry_ladder.py`).
-- [ ] An answer matching no rule returns a procedural nudge and opens the manipulative (once Part 4 renders `visual`). It never returns "the answer was X."
+- [ ] An answer matching no rule returns a procedural nudge and opens the manipulative. — ready to test (2026-09-14) on `addition_carry`/`subtraction_borrow` (`base10_blocks/unclassified`). It never returns "the answer was X."
 - [x] Every bug id in the catalog has a hint under 12 words — machine-checked in `backend/tests/test_misconceptions_catalog.py`, not by eye.
 
 ### D. Non-signals
@@ -44,18 +44,18 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] No LLM call appears in the network waterfall between submit and the verdict rendering.
 - [ ] Throttle the connection to slow 3G. The verdict still appears instantly; only narrative lags.
 
-### G. Manipulatives
+### G. Manipulatives — ready to test (2026-09-14) for bundling sticks (addition-with-carrying and subtraction-with-borrowing); number line and ten-frame are separate, not yet built
 
-- [ ] `86 + 94` can be solved end to end by dragging, with no keyboard.
-- [ ] Ten loose sticks cannot remain loose. They bundle, and the number below updates as they do.
-- [ ] Mastery below 0.4: the manipulative is open by default.
-- [ ] Mastery above 0.7: the manipulative is hidden and available only on request.
-- [ ] Verify the fading actually changes between the `new` and `fluent` seeds. This is the one that proves BKT is wired to the UI.
+- [ ] `86 + 94` can be solved end to end by dragging, with no keyboard. — verified live in-browser with `85 + 94`; also verified subtraction (`42 - 17`, and the borrow-across-zero case `305 - 8`) via a temporary local harness, since reaching `subtraction_borrow` through a live session isn't currently possible in one sitting (mastery resets per session, and the quest ends after 2 skills mastered — a pre-existing backend behavior, not something this change touched).
+- [ ] Ten loose sticks cannot remain loose. They bundle, and the number below updates as they do. — verified, including the cascading ones→tens→hundreds case.
+- [ ] Mastery below 0.4: the manipulative is open by default. — verified.
+- [ ] Mastery above 0.7: the manipulative is hidden and available only on request, and a wrong answer on attempt 2 still force-opens it regardless of band. — verified.
+- [ ] Verify the fading actually changes between the `new` and `fluent` seeds. — NOT testable yet: the `?seed=` profile system is still out of scope (not built). Fading itself is implemented and testable within a single live session by playing enough problems to cross the 0.4/0.7 mastery bands.
 
 ### H. Touch and tablet
 
-- [ ] Every drag works with a finger on a real tablet, or at minimum in Chrome device emulation with touch enabled.
-- [ ] Dragging a stick does not scroll the page.
+- [ ] Every drag works with a finger on a real tablet, or at minimum in Chrome device emulation with touch enabled. — bundling sticks verified with simulated pointer drags (mouse-derived pointer events); real touch-device/emulation pass still outstanding.
+- [ ] Dragging a stick does not scroll the page. — `touch-action: none` is set on the canvas and every token; not yet confirmed on a real touch device.
 - [ ] Number pad keys are at least 64px and hittable with a thumb. — ready to test (2026-09-12); CSS sets 64x64px minimum.
 - [ ] Full session playable at 1024 x 768 with nothing clipped or off-screen.
 

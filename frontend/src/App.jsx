@@ -116,6 +116,7 @@ export default function App() {
                   flashState={reaction === "idle" ? null : reaction}
                   feedback={feedback}
                   justAdvanced={justAdvanced}
+                  skillProgress={sessionData.skill_progress}
                 />
               )
             )}

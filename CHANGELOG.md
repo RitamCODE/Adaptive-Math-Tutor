@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-14 — Bundling sticks manipulative (revision-plan Part 4)
+
+Added `BundlingSticks.jsx`, a pointer-events-only drag manipulative (no library, per CLAUDE.md
+constraint #4) rendered for `addition_carry`/`subtraction_borrow` problems: loose "ones" sticks
+auto-bundle into a ten at 10 (glow → snap → slide), and a tens/hundreds bundle can be dragged
+down a place to unbundle for borrowing — one generic physics rule handles both operations and
+cascading borrow-across-zero. Wired to the retry ladder (attempt-2 wrong answers force it open,
+pre-seeded from the operands, per revision-plan 4.2) and to live BKT mastery (`<0.4` open,
+`0.4–0.7` collapsed, `>0.7` hidden-on-request), reusing `skill_progress` already flowing to the
+frontend — no backend changes needed. New `frontend/src/lib/arithmetic.js` parses `question`
+strings and splits numbers into place-value blocks client-side. Also fixed a real crash found
+during manual testing (a transient render reads `pileA`/`pileB`/`removeTarget` before the reset
+effect re-seeds them on an operation-changing prop transition) and a `.gitignore` bug where an
+unanchored `lib/` pattern from the Python template was silently swallowing the new
+`frontend/src/lib/` directory. Verified live end-to-end in-browser: `85 + 94`-style carrying and
+both plain and across-zero borrowing solved entirely by dragging, submitted via the number pad
+and graded correct; fading bands and the diagnostic-preload override confirmed via a temporary
+local harness (not shipped) since the backend resets mastery per session, making
+`subtraction_borrow` unreachable in one live sitting. Also corrected CLAUDE.md's `docs/PLAN.md`
+references (four places) to the file's actual name, `docs/revision-plan.md`.
+
 ## 2026-09-13 — Misconception catalog and event log (revision-plan Parts 2 and 3)
 
 Added `backend/content/misconceptions.json` (hint + visual per bug_type, replacing the
