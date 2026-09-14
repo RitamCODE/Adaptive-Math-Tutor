@@ -1,10 +1,12 @@
 """Thin FastAPI layer wrapping the compiled LangGraph turn cycle for a browser client.
 
 No grading/mastery/curriculum logic lives here — only wiring and response
-shaping. `SessionState`'s schema (backend/models/state.py) is specified
-verbatim in CLAUDE.md and is never modified; anything the HTTP layer needs
-beyond that schema (feedback, per-skill lock state) lives in the API-only
-models below.
+shaping. `SessionState`'s schema (backend/models/state.py) is specified in
+CLAUDE.md; anything the HTTP layer needs beyond that schema (feedback,
+per-skill lock state) lives in the API-only models below. Grading itself
+runs exactly once, inside the graph (`grade_and_diagnose_node` /
+`build_remediation_node`) — this layer reads `last_diagnosis`/`remediation`
+off the returned state rather than recomputing them.
 
 Session state lives in an in-memory dict keyed by session_id. This matches
 CLAUDE.md's non-goal of "no persistence beyond current session/local
@@ -28,8 +30,6 @@ from backend.llm import narrative
 from backend.logging import events
 from backend.models.bkt import MASTERY_THRESHOLD
 from backend.models.state import EngagementState, LastResponse, Problem, SessionState
-from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
-from backend.nodes.remediation import build_remediation
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
 app = FastAPI(title="Adaptive Math Tutor API")
@@ -240,11 +240,14 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
         base = _to_session_response(new_state)
         return AnswerResponse(**base.model_dump(), feedback=feedback)
 
-    diagnosis = pure_grade_and_diagnose(problem, req.answer, state.attempt_number)
-    remediation = build_remediation(diagnosis, state.attempt_number)
-
     new_state = SessionState.model_validate(graph_app.invoke(state.model_dump()))
     _SESSIONS[session_id] = new_state
+    # grade_and_diagnose_node / build_remediation_node already ran grading
+    # and remediation inside the graph above — last_diagnosis is always set
+    # on a signal-bearing turn; remediation is set only when the answer was
+    # wrong (None on a correct answer, since there's nothing to remediate).
+    diagnosis = new_state.last_diagnosis
+    remediation = new_state.remediation
     background_tasks.add_task(_refresh_flavor_text, session_id, new_state.current_problem)
     background_tasks.add_task(
         events.log_submission,
@@ -293,11 +296,13 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
             problem_id=diagnosis.problem_id,
             correct=diagnosis.correct,
             bug_type=diagnosis.bug_type,
-            hint=remediation.hint,
-            visual=remediation.visual,
+            hint=remediation.hint if remediation else None,
+            visual=remediation.visual if remediation else None,
             attempts_remaining=diagnosis.attempts_remaining,
-            reveal_answer=remediation.reveal_answer,
-            correct_answer=problem.correct_answer if (diagnosis.correct or remediation.reveal_answer) else None,
+            reveal_answer=remediation.reveal_answer if remediation else False,
+            correct_answer=problem.correct_answer
+            if (diagnosis.correct or (remediation and remediation.reveal_answer))
+            else None,
             skill_tag=problem.skill_tag,
         ),
     )

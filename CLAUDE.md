@@ -112,6 +112,11 @@ class DiagnosisResult(BaseModel):
     reveal_answer: bool         # True only on the third failed attempt
     signal: bool                # False for blank and rapid-guess submissions
 
+class Remediation(BaseModel):
+    hint: str | None
+    visual: str | None
+    reveal_answer: bool
+
 class EngagementState(BaseModel):
     streak: int
     xp: int
@@ -128,6 +133,10 @@ class SessionState(BaseModel):
     attempt_number: int                      # 1-indexed, resets only on a new problem
     attempt_history: list[tuple[int | None, str | None]]   # (answer, bug_type) this problem
     last_response: LastResponse | None
+    last_diagnosis: DiagnosisResult | None    # set by grade_and_diagnose_node; None until this
+                                               # turn's answer is graded
+    remediation: Remediation | None           # set by build_remediation_node; None on a correct
+                                               # answer, since there's nothing to remediate
     engagement: EngagementState
     problems_completed: int
     quest_length: int                        # default 10

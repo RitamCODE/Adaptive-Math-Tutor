@@ -6,9 +6,12 @@ code, copy is data"). It exists as a seam so remediation-specific shaping
 (manipulative-payload detail, worked-solution steps at attempt 3) has a
 place to grow without touching the pure grading path.
 
-Not wired into the LangGraph StateGraph: SessionState has no field to hold a
-Remediation value, so there's nothing for a graph node to store. It's called
-directly from backend/api.py to shape the HTTP response.
+Wired into the LangGraph StateGraph as `build_remediation_node` (see
+graph.py): reached whenever `grade_and_diagnose_node` produces a wrong,
+signal-bearing `DiagnosisResult` (stored on `SessionState.last_diagnosis`),
+and its output is stored on `SessionState.remediation`. `backend/api.py`
+reads both fields to shape the HTTP response instead of calling this
+function directly.
 """
 
 from backend.models.state import DiagnosisResult, Remediation

@@ -43,6 +43,30 @@ def test_wrong_answer_on_attempt_1_keeps_same_problem():
     assert result.attempt_number == 2
     assert result.skill_mastery[skill] < 0.3
 
+    # build_remediation_node ran inside the graph (revision-plan Part 5):
+    # last_diagnosis/remediation are populated without api.py calling the
+    # pure functions itself.
+    assert result.last_diagnosis is not None
+    assert result.last_diagnosis.correct is False
+    assert result.remediation is not None
+    assert result.remediation.hint is not None
+    assert result.remediation.visual is None  # visual only kicks in at attempt >= 2
+    assert result.remediation.reveal_answer is False  # only true at attempt >= 3
+
+
+def test_correct_answer_produces_no_remediation():
+    state = _invoke(_initial_state())
+    correct_answer = state.current_problem.correct_answer
+
+    state = state.model_copy(
+        update={"last_response": LastResponse(answer=correct_answer, correct=False, time_taken_sec=5.0)}
+    )
+    result = _invoke(state)
+
+    assert result.last_diagnosis is not None
+    assert result.last_diagnosis.correct is True
+    assert result.remediation is None
+
 
 def test_scripted_session_runs_through_one_mastery_transition():
     state = _invoke(_initial_state())

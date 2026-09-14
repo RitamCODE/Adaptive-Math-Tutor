@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-14 — Wire remediation into the graph (revision-plan Part 5)
+
+Made `build_remediation` a real LangGraph node (`build_remediation_node` in `graph.py`),
+reached via a new conditional edge for any wrong, signal-bearing answer (attempts 1
+through 3 alike — attempt 3's worked-solution reveal is the same node's output with
+`reveal_answer=True`, already baked in by `grade_and_diagnose`, not a separate path).
+Added `last_diagnosis`/`remediation` fields to `SessionState` to carry the result
+across the node boundary, and updated CLAUDE.md's schema to match (a `Remediation`
+class definition was also missing from CLAUDE.md's data models and got added).
+Removed `api.py`'s duplicate direct calls to `grade_and_diagnose`/`build_remediation`,
+which had been re-running grading a second time outside the graph purely to get
+hint/visual/`reveal_answer` for the HTTP response — the graph is now the sole place
+grading and remediation run. The prerequisite-demotion routing (`demote_skill_node`)
+was already in place from the 2026-09-12 retry-ladder work and needed no change.
+Added the real branching diagram to `backend/README.md`'s "How a turn flows" section.
+2 new tests in `test_graph.py`; verified live end-to-end via curl (hint-only at
+attempt 1, visual at attempt 2, `reveal_answer` at attempt 3, correct demotion
+fallback for a root skill); full suite (106) green.
+
 ## 2026-09-14 — Bundling sticks manipulative (revision-plan Part 4)
 
 Added `BundlingSticks.jsx`, a pointer-events-only drag manipulative (no library, per CLAUDE.md

@@ -5,8 +5,14 @@ Topology (see CLAUDE.md's routing spec):
     START --[route_from_start]--> "generate_problem"     (no answer pending: bootstrap/regenerate)
     START --[route_from_start]--> "grade_and_diagnose"    (an answer is pending)
 
-    "grade_and_diagnose" --[route_after_diagnosis]--> "hold_non_signal"   (blank/rapid-guess)
-    "grade_and_diagnose" --[route_after_diagnosis]--> "update_mastery"    (signal-bearing)
+    "grade_and_diagnose" --[route_after_diagnosis]--> "hold_non_signal"     (blank/rapid-guess)
+    "grade_and_diagnose" --[route_after_diagnosis]--> "build_remediation"   (signal-bearing, wrong)
+    "grade_and_diagnose" --[route_after_diagnosis]--> "update_mastery"      (signal-bearing, correct)
+
+    "build_remediation" -> "update_mastery"   (always continues on; runs for every wrong
+                                                signal-bearing attempt, 1 through 3 — attempt 3's
+                                                "worked solution" is just Remediation with
+                                                reveal_answer=True, not a separate path)
 
     "update_mastery" -> "decide_engagement"   (runs on every signal-bearing submission,
                                                 correct or wrong, so consecutive_wrong tracks
@@ -37,6 +43,7 @@ from backend.nodes.curriculum import select_next_skill
 from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
 from backend.nodes.engagement import decide_engagement as pure_decide_engagement
 from backend.nodes.problem_gen import generate_problem as pure_generate_problem
+from backend.nodes.remediation import build_remediation as pure_build_remediation
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
 
@@ -95,7 +102,20 @@ def grade_and_diagnose_node(state: SessionState) -> dict:
         "misconception_log": misconception_log,
         "attempt_history": attempt_history,
         "last_response": corrected_response,
+        "last_diagnosis": diagnosis,
     }
+
+
+def build_remediation_node(state: SessionState) -> dict:
+    """Reached only for a wrong, signal-bearing answer (see route_after_diagnosis).
+
+    Runs for attempts 1 through 3 alike — grade_and_diagnose already bakes
+    the visual in at attempt >= 2 and reveal_answer=True at attempt >= 3 into
+    last_diagnosis, so the attempt-3 "worked solution" moment is just this
+    same node's output with reveal_answer set, not a separate code path.
+    """
+    remediation = pure_build_remediation(state.last_diagnosis, state.attempt_number)
+    return {"remediation": remediation}
 
 
 def hold_non_signal_node(state: SessionState) -> dict:
@@ -170,7 +190,7 @@ def demote_skill_node(state: SessionState) -> dict:
             "current_problem": problem, "next_action": "new_problem", "last_response": None,
             "attempt_number": 1, "attempt_history": [],
             "problems_completed": state.problems_completed + 1,
-        }
+            }
 
     target = prereqs[0]
     problem = pure_generate_problem(target, _difficulty_for(state.skill_mastery, target))
@@ -193,7 +213,9 @@ def route_from_start(state: SessionState) -> str:
 
 
 def route_after_diagnosis(state: SessionState) -> str:
-    return "update_mastery" if _is_signal(state.last_response) else "hold_non_signal"
+    if not _is_signal(state.last_response):
+        return "hold_non_signal"
+    return "update_mastery" if state.last_response.correct else "build_remediation"
 
 
 def route_after_engagement(state: SessionState) -> str:
@@ -221,6 +243,7 @@ def build_graph() -> StateGraph:
     graph.add_node("generate_problem", generate_problem_node)
     graph.add_node("grade_and_diagnose", grade_and_diagnose_node)
     graph.add_node("hold_non_signal", hold_non_signal_node)
+    graph.add_node("build_remediation", build_remediation_node)
     graph.add_node("update_mastery", update_mastery_node)
     graph.add_node("decide_engagement", decide_engagement_node)
     graph.add_node("advance_skill", advance_skill_node)
@@ -237,8 +260,13 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges(
         "grade_and_diagnose",
         route_after_diagnosis,
-        {"update_mastery": "update_mastery", "hold_non_signal": "hold_non_signal"},
+        {
+            "update_mastery": "update_mastery",
+            "hold_non_signal": "hold_non_signal",
+            "build_remediation": "build_remediation",
+        },
     )
+    graph.add_edge("build_remediation", "update_mastery")
     graph.add_edge("update_mastery", "decide_engagement")
     graph.add_conditional_edges(
         "decide_engagement",

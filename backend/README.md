@@ -40,21 +40,47 @@ backend/
 
 The frontend never talks to individual nodes — it calls `POST /sessions/{id}/answer`, and `api.py` runs the compiled graph (`graph.app`, built by `build_graph()` in `graph.py`) via `graph.invoke()`, threading `SessionState` through in memory (no LangGraph checkpointer is configured — persistence is the caller's job, and here the caller is `api.py`'s in-memory session dict).
 
+This is real conditional branching, not a linear pipeline (revision-plan Part 5 — "making the graph earn its place"):
+
+```
+Curriculum ──► Problem Gen ──► [student answers] ──► Diagnosis
+                    ▲                                    │
+                    │                         ┌──────────┼──────────┐
+                    │                     correct    wrong, any    fatigue
+                    │                         │       attempt        stop
+                    │                         ▼          │            │
+                    │                   update_mastery    │            │
+                    │                         │           ▼            ▼
+                    │                         │     Remediation   end_session
+                    │                         │     (hint/visual/      │
+                    │                         │      reveal_answer)    │
+                    │                         ▼           │            │
+                    │                  decide_engagement ◄┘            │
+                    │                         │                        │
+                    │           ┌─────────────┼─────────────┐          │
+                    │      attempt < 3    attempt >= 3   mastered      │
+                    │           │              │        (>= 0.8)       │
+                    │           ▼              ▼             │         │
+                    └── retry_problem    demote_skill   Curriculum ────┘
+                        (same problem)   (prerequisite)  (advance_skill)
+```
+
 Inside the graph:
 
 1. **Conditional entry** (`route_from_start`): if `state.last_response is None` (a brand-new session, or a request for a new problem with nothing to grade yet), go straight to `generate_problem`. Otherwise an answer is pending grading, so enter at `grade_and_diagnose`.
-2. **Grading** (`grade_and_diagnose_node`) calls the pure `grade_and_diagnose()` and — important — **overwrites** `last_response.correct` with its own verdict rather than trusting whatever the caller submitted. This is why `LastResponse.correct` is documented in `models/state.py` as provisional on input: the grading node is the sole source of truth, and every downstream node only ever sees the corrected value. A blank or sub-2-second "rapid guess" answer (`route_after_diagnosis`) skips straight to `hold_non_signal_node` instead — no attempt consumed, no BKT update, `next_action` just goes back to `retry_problem`.
-3. **Signal-bearing chain** (linear): `update_mastery → decide_engagement`.
+2. **Grading** (`grade_and_diagnose_node`) calls the pure `grade_and_diagnose()`, stores the full result on `state.last_diagnosis`, and — important — **overwrites** `last_response.correct` with its own verdict rather than trusting whatever the caller submitted. This is why `LastResponse.correct` is documented in `models/state.py` as provisional on input: the grading node is the sole source of truth, and every downstream node only ever sees the corrected value. A blank or sub-2-second "rapid guess" answer (`route_after_diagnosis`) skips straight to `hold_non_signal_node` instead — no attempt consumed, no BKT update, `next_action` just goes back to `retry_problem`.
+3. **Remediation** (`route_after_diagnosis`, then `build_remediation_node`): a signal-bearing *wrong* answer routes here before anything else runs. It wraps the pure `build_remediation()` from `remediation.py` around `state.last_diagnosis`, storing the hint/visual/`reveal_answer` payload on `state.remediation`. It runs for every wrong attempt — 1, 2, and 3 alike — because `grade_and_diagnose` already bakes the visual in at attempt ≥ 2 and `reveal_answer=True` at attempt ≥ 3 into the diagnosis; attempt 3's "worked solution" moment is just this node's output with `reveal_answer` set, not a separate path. A correct answer skips straight past it to `update_mastery` — there's nothing to remediate.
+4. **Signal-bearing chain** (linear from here): `update_mastery → decide_engagement`.
    - `update_mastery_node` runs the BKT posterior + transit update for the graded skill — except when the just-recorded bug type is `digit_reversal`, which CLAUDE.md requires not be penalized; that case is a no-op here (the retry ladder below still runs normally).
    - `decide_engagement_node` recomputes streak/xp/`frustration_signal`/`consecutive_wrong` from the same event.
-4. **Post-engagement routing** (`route_after_engagement`) is where the retry ladder, demotion, and termination all live:
+5. **Post-engagement routing** (`route_after_engagement`) is where the retry ladder, demotion, and termination all live:
    - 4 consecutive signal-bearing wrong answers anywhere → `end_session` (the fatigue stop, checked first, regardless of this turn's own outcome).
    - Wrong, with attempts remaining (`attempt_number < 3`) → `retry_problem_node`: same problem stays on screen, only the attempt counter increments.
    - Wrong on the third attempt → `demote_skill_node`: re-serves a problem on the skill's prerequisite (or, for a root skill with no prerequisite, falls back to a fresh problem on the same skill).
    - Correct, and `quest_length` reached or 2 skills mastered → `end_session`.
    - Correct, and the graded skill's mastery is now `>= MASTERY_THRESHOLD` (0.8) → `advance_skill_node`, which picks the next skill (`select_next_skill`) and generates its first problem in one node — there's no `SessionState` field to carry a "just-chosen skill" across a separate hop, so selection and generation are fused here.
    - Correct otherwise → `new_problem_node`: another problem on the same skill.
-5. Every node above (`generate_problem`, `hold_non_signal`, `new_problem`, `retry_problem`, `demote_skill`, `advance_skill`, `end_session`) terminates at `END`. Whatever `SessionState` comes out is what `api.py` stores back into its session dict and reshapes into the HTTP response.
+6. Every node above (`generate_problem`, `hold_non_signal`, `new_problem`, `retry_problem`, `demote_skill`, `advance_skill`, `end_session`) terminates at `END`. Whatever `SessionState` comes out is what `api.py` stores back into its session dict and reshapes into the HTTP response — reading `last_diagnosis`/`remediation` straight off it rather than recomputing them.
 
 ## Data models (`models/state.py`)
 
@@ -62,9 +88,9 @@ Inside the graph:
 - **`LastResponse`** — `answer`, `correct`, `time_taken_sec`. `correct` is provisional when a caller submits a new answer (see above) — never trust it downstream of grading.
 - **`Misconception`** — `skill`, `bug_type`, `timestamp`; appended to `SessionState.misconception_log` when an answer is wrong and a specific bug rule matched (excluded for `unclassified`, per `grade_and_diagnose_node` in `graph.py`).
 - **`EngagementState`** — `streak`, `xp`, `frustration_signal`, `consecutive_wrong` (signal-bearing wrong answers in a row; drives the 4-in-a-row fatigue stop).
-- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `engagement`, `problems_completed`, `quest_length` (default 10), `next_action`.
+- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `last_diagnosis` (the `DiagnosisResult` `grade_and_diagnose_node` just produced, `None` before any signal-bearing answer this turn), `remediation` (the `Remediation` `build_remediation_node` just produced, `None` on a correct answer or before grading), `engagement`, `problems_completed`, `quest_length` (default 10), `next_action`.
 - **`DiagnosisResult`** (also in `models/state.py`) — `correct`, `bug_type | None`, `hint`, `visual`, `attempts_remaining`, `reveal_answer`; what `grade_and_diagnose()` returns.
-- **`Remediation`** — `hint`, `visual`, `reveal_answer`; a subset of `DiagnosisResult` projected by `build_remediation()` for the HTTP response. Not referenced by `SessionState` or wired into the graph — `api.py` calls it directly, as a seam for remediation-specific shaping (manipulative payload detail, worked-solution steps) to grow into later without touching the pure grading path.
+- **`Remediation`** — `hint`, `visual`, `reveal_answer`; a subset of `DiagnosisResult` projected by `build_remediation()`, and wired into the graph as `build_remediation_node` (see "How a turn flows" above) — a seam for remediation-specific shaping (manipulative payload detail, worked-solution steps) to grow into later without touching the pure grading path.
 - **`BKTParams`** (`models/bkt.py`) — `p_init=0.3`, `p_transit=0.15`, `p_slip=0.1`, `p_guess=0.05`.
 
 ## Mastery model (BKT) — `models/bkt.py`

@@ -66,6 +66,8 @@ class SessionState(BaseModel):
     attempt_number: int = 1  # 1-indexed, resets only on a new problem
     attempt_history: list[tuple[int | None, str | None]] = []  # (answer, bug_type) this problem
     last_response: LastResponse | None
+    last_diagnosis: DiagnosisResult | None = None  # set by grade_and_diagnose_node; feeds build_remediation_node
+    remediation: Remediation | None = None  # set by build_remediation_node on a wrong signal-bearing answer
     engagement: EngagementState
     problems_completed: int = 0
     quest_length: int = 10

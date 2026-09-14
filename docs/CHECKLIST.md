@@ -15,6 +15,7 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] Wrong on attempt 3: worked solution plays, then the next problem is on the *prerequisite* skill, not the same one. — routing to the prerequisite is ready to test; the "worked solution plays" animation is NOT ready (Part 4/6).
 - [ ] Correct on attempt 2 or 3 is celebrated with effort framing, not treated as a failure. — effort-framing text is ready to test (needs `OPENAI_API_KEY` set; falls back to "Correct!" otherwise).
 - [ ] At no point in attempts 1 or 2 does the correct answer appear anywhere, including in the network response payload. — ready to test (2026-09-12); also fixes a real bug where this previously fired unconditionally.
+- [ ] The hint/visual/reveal-answer payload actually comes from inside the graph (revision-plan Part 5, "making the graph earn its place"), not a duplicate grading call in the API layer — ready to test (2026-09-14): confirm in `backend/README.md`'s branching diagram and `graph.py`'s `build_remediation_node`; behavior is unchanged from the rows above, this is a structural check.
 
 ### C. Diagnosis quality — ready to test (2026-09-13)
 
