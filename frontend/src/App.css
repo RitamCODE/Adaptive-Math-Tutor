@@ -924,3 +924,247 @@ body {
     box-shadow: 0 0 0 6px rgba(255, 111, 89, 0.25);
   }
 }
+
+/* Number line */
+
+.number-line {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  border: 2px solid var(--color-teal);
+}
+
+.number-line-header {
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.number-line-supply {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.number-line-pile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 96px;
+}
+
+.number-line-pile-label {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.number-line-pile-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-height: 48px;
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.hop-token {
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.hop-token:active {
+  cursor: grabbing;
+}
+
+.hop-token.dragging {
+  opacity: 0.35;
+}
+
+.hop-token-ones .hop-arrow-svg {
+  width: 22px;
+}
+
+.hop-token-tens .hop-arrow-svg {
+  width: 30px;
+}
+
+.hop-token-hundreds .hop-arrow-svg {
+  width: 38px;
+}
+
+.hop-arrow-path {
+  fill: none;
+  stroke: var(--color-teal);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.number-line-track {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  touch-action: none;
+}
+
+.number-line-start-label {
+  min-width: 2.5rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.number-line-rail {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  border: 2px solid var(--color-locked);
+}
+
+.number-line-marker {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-coral);
+  transform: translate(-50%, -50%);
+  transition: left 200ms ease;
+}
+
+.number-line-marker-back {
+  background: var(--color-gold);
+}
+
+.number-line-direction {
+  font-size: 1.4rem;
+  color: var(--color-ink-soft);
+}
+
+.number-line-readout {
+  align-self: center;
+  min-height: 48px;
+  min-width: 6rem;
+  padding: 0.4rem 1rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-locked);
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+/* Ten frame */
+
+.ten-frame {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  border: 2px solid var(--color-locked);
+}
+
+.ten-frame-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+.ten-frame-toggle {
+  min-height: 48px;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-teal-soft);
+  color: #145b52;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ten-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: var(--space-1);
+  max-width: 320px;
+  touch-action: none;
+}
+
+.ten-frame-cell {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-locked);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+}
+
+.ten-frame-cell-given .dot-circle {
+  fill: var(--color-gold);
+}
+
+.ten-frame-cell-placed .dot-circle {
+  fill: var(--color-teal);
+}
+
+.ten-frame-supply {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ten-frame-pile-label {
+  font-size: 0.8rem;
+  color: var(--color-ink-soft);
+}
+
+.ten-frame-pile-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-height: 48px;
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.dot-token {
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dot-token:active {
+  cursor: grabbing;
+}
+
+.dot-token.dragging {
+  opacity: 0.35;
+}
+
+.dot-circle {
+  fill: var(--color-coral);
+}

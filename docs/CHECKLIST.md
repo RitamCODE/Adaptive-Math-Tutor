@@ -45,13 +45,15 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] No LLM call appears in the network waterfall between submit and the verdict rendering.
 - [ ] Throttle the connection to slow 3G. The verdict still appears instantly; only narrative lags.
 
-### G. Manipulatives — ready to test (2026-09-14) for bundling sticks (addition-with-carrying and subtraction-with-borrowing); number line and ten-frame are separate, not yet built
+### G. Manipulatives — ready to test (2026-09-14) for all three: bundling sticks (addition-with-carrying and subtraction-with-borrowing), number line (the four `number_line/*` misconceptions), and ten-frame (`addition_no_carry` low-mastery scaffold)
 
 - [ ] `86 + 94` can be solved end to end by dragging, with no keyboard. — verified live in-browser with `85 + 94`; also verified subtraction (`42 - 17`, and the borrow-across-zero case `305 - 8`) via a temporary local harness, since reaching `subtraction_borrow` through a live session isn't currently possible in one sitting (mastery resets per session, and the quest ends after 2 skills mastered — a pre-existing backend behavior, not something this change touched).
 - [ ] Ten loose sticks cannot remain loose. They bundle, and the number below updates as they do. — verified, including the cascading ones→tens→hundreds case.
 - [ ] Mastery below 0.4: the manipulative is open by default. — verified.
 - [ ] Mastery above 0.7: the manipulative is hidden and available only on request, and a wrong answer on attempt 2 still force-opens it regardless of band. — verified.
 - [ ] Verify the fading actually changes between the `new` and `fluent` seeds. — NOT testable yet: the `?seed=` profile system is still out of scope (not built). Fading itself is implemented and testable within a single live session by playing enough problems to cross the 0.4/0.7 mastery bands.
+- [ ] Number line force-opens on attempt 2 of an `add_off_by_one`/`add_used_subtraction`/`reversed_operands`/`digit_reversal` diagnosis, shows hop tokens grouped by place value (from `toBlocks`), and only accepts drops on the track (any order). — verified live in-browser: `74 + 57` answered `130` on attempt 2 opened the number line with 5 tens-hops + 7 ones-hops from a marker at 74; dragging 1 tens-hop and 2 ones-hops advanced the readout 74 → 84 → 86 correctly; the widget was gone again once attempt 3 (worked-solution/demotion) took over.
+- [ ] Ten-frame shows for `addition_no_carry` at low mastery, pre-fills `a` cells, and fills the remaining cells by dragging `b` supply dots one at a time. — verified live in-browser: a fresh `2 + 2` session showed 2 pre-filled cells + 2 draggable supply dots; dragging both filled the frame to 4/10 and the supply tray emptied.
 
 ### H. Touch and tablet
 

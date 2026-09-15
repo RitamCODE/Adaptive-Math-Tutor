@@ -2,8 +2,11 @@ import { useState } from "react";
 import NumberPad from "./NumberPad";
 import FeedbackBanner from "./FeedbackBanner";
 import BundlingSticks from "./BundlingSticks";
+import NumberLine from "./NumberLine";
+import TenFrame from "./TenFrame";
 
 const BUNDLING_STICKS_SKILLS = new Set(["addition_carry", "subtraction_borrow"]);
+const TEN_FRAME_SKILLS = new Set(["addition_no_carry"]);
 
 const CONFETTI_ANGLES = [
   { angle: -60, color: "coral" },
@@ -36,6 +39,7 @@ export default function ProblemCard({
   const feedbackForThisProblem = feedback && feedback.problem_id === problem.problem_id ? feedback : null;
   const mastery = skillProgress?.find((entry) => entry.skill === problem.skill_tag)?.mastery ?? 0;
   const showBundlingSticks = BUNDLING_STICKS_SKILLS.has(problem.skill_tag);
+  const showTenFrame = TEN_FRAME_SKILLS.has(problem.skill_tag);
 
   return (
     <div className={`problem-card${flashState ? ` problem-card-${flashState}` : ""}`}>
@@ -58,6 +62,8 @@ export default function ProblemCard({
       {showBundlingSticks && (
         <BundlingSticks problem={problem} feedback={feedbackForThisProblem} mastery={mastery} />
       )}
+      {showTenFrame && <TenFrame problem={problem} mastery={mastery} />}
+      <NumberLine problem={problem} feedback={feedbackForThisProblem} />
       <NumberPad value={answer} onChange={setAnswer} onSubmit={handleSubmit} disabled={loading} />
     </div>
   );

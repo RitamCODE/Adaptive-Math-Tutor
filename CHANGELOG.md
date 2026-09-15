@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-14 — Number line and ten-frame manipulatives (revision-plan Part 4)
+
+Added the two remaining manipulatives from the Part 4 table: `NumberLine.jsx` (for
+the four `number_line/*` misconceptions — `add_off_by_one`, `add_used_subtraction`,
+`reversed_operands`, `digit_reversal`), which force-opens on attempt 2 exactly like
+`BundlingSticks` does for `base10_blocks/*`, groups hop tokens by place value via the
+existing `toBlocks` helper (so a 3-digit operand is still at most 9 hops per place,
+not hundreds of individual unit hops), and lets the student drag hops onto a track to
+build their own answer; and `TenFrame.jsx`, a low-mastery scaffold for
+`addition_no_carry` (which has no bug rules and thus no diagnosis to hook a force-open
+into) shown whenever mastery is below 0.4, reusing the same `bandFromMastery` bands as
+bundling sticks. Both follow the established pointer-events drag pattern (ghost
+element, single-zone hit-testing) and the shared `App.css` design tokens — no new
+dependencies, no per-component stylesheets. Wired into `ProblemCard.jsx`; number line
+needs no skill-tag gate since its bug types span multiple skills. Verified live
+end-to-end in-browser: a `74 + 57` problem answered wrong on attempt 2 opened the
+number line with the correct hop counts and direction, dragging advanced the readout
+correctly, and it was gone by attempt 3; a fresh `addition_no_carry` session showed
+the ten-frame pre-filled and fillable by drag. Full backend suite (106, untouched by
+this frontend-only change) still green.
+
 ## 2026-09-14 — Wire remediation into the graph (revision-plan Part 5)
 
 Made `build_remediation` a real LangGraph node (`build_remediation_node` in `graph.py`),
