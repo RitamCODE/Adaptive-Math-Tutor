@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-14 — Seeded sessions and localStorage restart recovery (revision-plan Part 7.1/7.2)
+
+Added `POST /sessions/seed/{new|struggling|fluent}`, backing a `?seed=` URL param the demo
+video needs: `struggling` installs `addition_carry` mastery at `0.3` with one prior
+`add_concat_no_carry` misconception (manipulative open by default), `fluent` installs it at
+`0.85` (abstract-only), both via a new `_install_seeded_state` helper that generates a real
+`current_problem` for the profile's skill without running the graph — the same "read the
+state back as-is" pattern `GET /sessions/{id}` already used. The frontend still shows the
+name form for all three seeds (so a real name can be typed on camera) and only swaps which
+endpoint `handleStart` calls. Reused that same helper for `POST /sessions/{id}/restore`,
+which fixes the other open Part 7 item: `App.jsx` now snapshots the *full* safe session
+(mastery, misconceptions, engagement, progress — everything `SessionResponse` already sent
+minus `correct_answer`, which was widened to include the previously-omitted fields) to
+localStorage on every turn instead of just a bare session id, and on a 404 (backend
+restarted, lost its in-memory `_SESSIONS`) restores that snapshot under the same session id
+rather than losing it. The in-flight problem and attempt count don't survive a restart —
+intentionally: the pre-restart problem's answer was never sent to the client and reconstructing
+it would mean either violating CLAUDE.md constraint #7 or adding a heavier server-side
+persistence layer, so a fresh problem on the same skill is generated instead; mastery/XP/
+misconceptions all do survive. Also fixed `api.js`'s `handle()` to attach the HTTP status to
+thrown errors (previously indistinguishable from a network-level failure), and a genuinely
+unreachable backend now shows a visible message instead of silently discarding the cached
+session. 6 new backend tests; verified live end-to-end in-browser for all three seeds, a
+plain mid-session refresh, a killed-and-restarted backend recovering via `/restore`, and a
+still-down backend showing the new error message. Full suite (111) green.
+
 ## 2026-09-14 — Number line and ten-frame manipulatives (revision-plan Part 4)
 
 Added the two remaining manipulatives from the Part 4 table: `NumberLine.jsx` (for

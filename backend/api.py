@@ -19,17 +19,19 @@ now live behind a separate `GET /sessions/{id}/narrative`, which the
 frontend fetches right after rendering the instant verdict.
 """
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.graph import app as graph_app
+from backend.graph import _difficulty_for, app as graph_app
 from backend.llm import narrative
 from backend.logging import events
 from backend.models.bkt import MASTERY_THRESHOLD
-from backend.models.state import EngagementState, LastResponse, Problem, SessionState
+from backend.models.state import EngagementState, LastResponse, Misconception, Problem, SessionState
+from backend.nodes.problem_gen import generate_problem
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
 app = FastAPI(title="Adaptive Math Tutor API")
@@ -52,6 +54,21 @@ _NARRATIVE_CACHE: dict[str, tuple[str, "NarrativeOut"]] = {}
 
 class StartSessionRequest(BaseModel):
     student_id: str
+
+
+class RestoreRequest(BaseModel):
+    """Body for POST /sessions/{id}/restore: the safe (no correct_answer)
+    fields of a cached SessionResponse, sent back by the frontend when a
+    GET /sessions/{id} 404s (the backend restarted and lost its in-memory
+    session). See docs/CHECKLIST.md section J."""
+
+    student_id: str
+    skill_mastery: dict[str, float]
+    misconception_log: list[Misconception]
+    engagement: EngagementState
+    problems_completed: int
+    quest_length: int
+    active_skill: str
 
 
 class AnswerRequest(BaseModel):
@@ -81,6 +98,15 @@ class SessionResponse(BaseModel):
     engagement: EngagementState
     skill_progress: list[SkillProgress]
     next_action: str
+    # Everything below is safe to expose (no correct_answer anywhere in it) and
+    # exists so the frontend can cache a genuinely complete session snapshot in
+    # localStorage, for both plain rehydration and restart recovery (see
+    # /sessions/{id}/restore).
+    skill_mastery: dict[str, float]
+    misconception_log: list[Misconception]
+    problems_completed: int
+    quest_length: int
+    attempt_number: int
 
 
 class Feedback(BaseModel):
@@ -136,6 +162,11 @@ def _to_session_response(state: SessionState) -> SessionResponse:
         engagement=state.engagement,
         skill_progress=_skill_progress(state.skill_mastery),
         next_action=state.next_action,
+        skill_mastery=state.skill_mastery,
+        misconception_log=state.misconception_log,
+        problems_completed=state.problems_completed,
+        quest_length=state.quest_length,
+        attempt_number=state.attempt_number,
     )
 
 
@@ -167,6 +198,70 @@ def _get_session(session_id: str) -> SessionState:
     return state
 
 
+def _install_seeded_state(
+    session_id: str,
+    student_id: str,
+    skill_mastery: dict[str, float],
+    misconception_log: list[Misconception],
+    engagement: EngagementState,
+    problems_completed: int,
+    quest_length: int,
+    active_skill: str,
+) -> SessionState:
+    """Install a fully-formed session directly into `_SESSIONS`, without
+    running it through the graph (the same "read the state back as-is"
+    pattern `get_session` already relies on). Backs both the `struggling`/
+    `fluent` demo seeds and post-restart recovery: a fresh, internally
+    consistent `current_problem` is generated for `active_skill` so the
+    session is immediately playable, but its `correct_answer` never has to
+    pass through anything the client has touched.
+    """
+    difficulty = _difficulty_for(skill_mastery, active_skill)
+    problem = generate_problem(active_skill, difficulty)
+    state = SessionState(
+        student_id=student_id,
+        session_id=session_id,
+        skill_mastery=skill_mastery,
+        misconception_log=misconception_log,
+        current_problem=problem,
+        attempt_number=1,
+        attempt_history=[],
+        last_response=None,
+        last_diagnosis=None,
+        remediation=None,
+        engagement=engagement,
+        problems_completed=problems_completed,
+        quest_length=quest_length,
+        next_action="new_problem",
+    )
+    _SESSIONS[session_id] = state
+    return state
+
+
+# Fixed demo profiles for the `?seed=` frontend param (revision-plan Part 7.1).
+# `new` needs no entry here: it's just today's ordinary blank start.
+_SEED_PROFILES: dict[str, dict] = {
+    "struggling": dict(
+        skill_mastery={"addition_no_carry": 0.9, "addition_carry": 0.3},
+        misconception_log=[
+            Misconception(skill="addition_carry", bug_type="add_concat_no_carry", timestamp=datetime.now(timezone.utc))
+        ],
+        engagement=EngagementState(streak=0, xp=10, frustration_signal=False, consecutive_wrong=1),
+        problems_completed=3,
+        quest_length=10,
+        active_skill="addition_carry",
+    ),
+    "fluent": dict(
+        skill_mastery={"addition_no_carry": 1.0, "addition_carry": 0.85},
+        misconception_log=[],
+        engagement=EngagementState(streak=4, xp=120, frustration_signal=False, consecutive_wrong=0),
+        problems_completed=6,
+        quest_length=10,
+        active_skill="addition_carry",
+    ),
+}
+
+
 def _is_signal(answer: int | None, time_taken_sec: float) -> bool:
     return answer is not None and time_taken_sec >= 2.0
 
@@ -192,6 +287,50 @@ def start_session(req: StartSessionRequest, background_tasks: BackgroundTasks) -
 @app.get("/sessions/{session_id}", response_model=SessionResponse)
 def get_session(session_id: str) -> SessionResponse:
     return _to_session_response(_get_session(session_id))
+
+
+@app.post("/sessions/seed/{name}", response_model=SessionResponse)
+def start_seeded_session(
+    name: str, req: StartSessionRequest, background_tasks: BackgroundTasks
+) -> SessionResponse:
+    """`?seed=` demo entry point (revision-plan Part 7.1). `new` is just an
+    ordinary blank start under its own route, so the frontend has one call
+    shape regardless of which seed was requested; `struggling`/`fluent` are
+    pre-populated via `_install_seeded_state`."""
+    if name == "new":
+        return start_session(req, background_tasks)
+    profile = _SEED_PROFILES.get(name)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"unknown seed profile: {name!r}")
+    new_state = _install_seeded_state(session_id=uuid4().hex, student_id=req.student_id, **profile)
+    background_tasks.add_task(_refresh_flavor_text, new_state.session_id, new_state.current_problem)
+    return _to_session_response(new_state)
+
+
+@app.post("/sessions/{session_id}/restore", response_model=SessionResponse)
+def restore_session(
+    session_id: str, req: RestoreRequest, background_tasks: BackgroundTasks
+) -> SessionResponse:
+    """Recovery path for docs/CHECKLIST.md section J: a browser holding a
+    cached session snapshot hits a 404 on GET (the backend restarted and lost
+    its in-memory `_SESSIONS`), and re-installs that snapshot under the same
+    session_id it already has cached. Mastery, XP, streak, and misconception
+    history all survive; the in-flight problem and attempt count do not,
+    since the pre-restart problem's correct_answer was never sent to the
+    client and can't be reconstructed (CLAUDE.md constraint #7) — a fresh
+    problem on the same skill is generated instead."""
+    new_state = _install_seeded_state(
+        session_id=session_id,
+        student_id=req.student_id,
+        skill_mastery=req.skill_mastery,
+        misconception_log=req.misconception_log,
+        engagement=req.engagement,
+        problems_completed=req.problems_completed,
+        quest_length=req.quest_length,
+        active_skill=req.active_skill,
+    )
+    background_tasks.add_task(_refresh_flavor_text, new_state.session_id, new_state.current_problem)
+    return _to_session_response(new_state)
 
 
 @app.post("/sessions/{session_id}/answer", response_model=AnswerResponse)

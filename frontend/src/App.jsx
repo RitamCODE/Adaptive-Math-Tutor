@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getSession, getNarrative, startSession, submitAnswer } from "./api";
+import { getSession, getNarrative, restoreSession, seedSession, startSession, submitAnswer } from "./api";
 import StudentIdForm from "./components/StudentIdForm";
 import ProblemCard from "./components/ProblemCard";
 import SkillTrailMap from "./components/SkillTrailMap";
@@ -7,8 +7,33 @@ import StatsBar from "./components/StatsBar";
 import Mascot from "./components/Mascot";
 import "./App.css";
 
-const SESSION_STORAGE_KEY = "adaptive-math-tutor:session_id";
+// Holds { session_id, snapshot } where `snapshot` is the last full
+// SessionResponse the server sent us — enough to rehydrate on a plain
+// refresh (via GET) or restore a session the backend lost on restart
+// (via POST .../restore), without ever caching a correct_answer.
+const SESSION_STORAGE_KEY = "adaptive-math-tutor:session";
 const REACTION_DURATION_MS = 1600;
+const VALID_SEEDS = ["new", "struggling", "fluent"];
+
+function loadCachedSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function seedFromUrl() {
+  const value = new URLSearchParams(window.location.search).get("seed");
+  return VALID_SEEDS.includes(value) ? value : null;
+}
+
+function stripSeedFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("seed");
+  window.history.replaceState({}, "", url);
+}
 
 export default function App() {
   const [sessionData, setSessionData] = useState(null);
@@ -19,18 +44,60 @@ export default function App() {
   const [error, setError] = useState(null);
   const [resuming, setResuming] = useState(true);
   const problemStartRef = useRef(Date.now());
+  const [seed] = useState(seedFromUrl);
 
   useEffect(() => {
-    const cachedId = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!cachedId) {
+    // A seeded link always starts fresh through the name form below, taking
+    // precedence over anything cached — it's meant to replace, not resume.
+    if (seed) {
       setResuming(false);
       return;
     }
-    getSession(cachedId)
+    const cached = loadCachedSession();
+    if (!cached) {
+      setResuming(false);
+      return;
+    }
+    getSession(cached.session_id)
       .then((data) => setSessionData(data))
-      .catch(() => localStorage.removeItem(SESSION_STORAGE_KEY))
+      .catch((err) => {
+        // Backend restarted and lost this session: rebuild it from our own
+        // cached (correct_answer-free) snapshot instead of losing progress.
+        if (err.status === 404 && cached.snapshot?.current_problem) {
+          const snap = cached.snapshot;
+          return restoreSession(cached.session_id, {
+            student_id: snap.student_id,
+            skill_mastery: snap.skill_mastery,
+            misconception_log: snap.misconception_log,
+            engagement: snap.engagement,
+            problems_completed: snap.problems_completed,
+            quest_length: snap.quest_length,
+            active_skill: snap.current_problem.skill_tag,
+          }).then((data) => setSessionData(data));
+        }
+        throw err;
+      })
+      .catch((err) => {
+        if (err.status === 404) {
+          // Nothing left to recover from (no snapshot, or restore itself
+          // 404'd) — fall back to a clean start, same as before.
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+        } else {
+          // The backend is unreachable outright: keep the cached session
+          // around and say so, rather than silently discarding it.
+          setError("Can't reach the server. Check it's running, then refresh.");
+        }
+      })
       .finally(() => setResuming(false));
-  }, []);
+  }, [seed]);
+
+  useEffect(() => {
+    if (!sessionData) return;
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ session_id: sessionData.session_id, snapshot: sessionData })
+    );
+  }, [sessionData]);
 
   useEffect(() => {
     problemStartRef.current = Date.now();
@@ -46,10 +113,14 @@ export default function App() {
   function handleStart(studentId) {
     setLoading(true);
     setError(null);
-    startSession(studentId)
+    const starter = seed ? seedSession(seed, studentId) : startSession(studentId);
+    starter
       .then((data) => {
-        localStorage.setItem(SESSION_STORAGE_KEY, data.session_id);
         setSessionData(data);
+        // Once we've actually landed in the seeded state, drop ?seed= so a
+        // later plain refresh rehydrates normally instead of re-seeding and
+        // discarding whatever progress happened since.
+        if (seed) stripSeedFromUrl();
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));

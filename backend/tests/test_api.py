@@ -96,6 +96,70 @@ def test_unknown_session_returns_404():
     assert response.status_code == 404
 
 
+def test_seed_new_behaves_like_a_plain_start():
+    response = client.post("/sessions/seed/new", json={"student_id": "seed-new"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["current_problem"]["skill_tag"] == "addition_no_carry"
+    assert body["skill_mastery"] == {}
+    assert body["misconception_log"] == []
+
+
+def test_seed_struggling_has_low_mastery_and_a_prior_misconception():
+    response = client.post("/sessions/seed/struggling", json={"student_id": "seed-struggling"})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["current_problem"]["skill_tag"] == "addition_carry"
+    assert "correct_answer" not in body["current_problem"]
+    assert body["skill_mastery"]["addition_carry"] < 0.4
+    assert len(body["misconception_log"]) == 1
+    assert body["misconception_log"][0]["bug_type"] == "add_concat_no_carry"
+    assert body["attempt_number"] == 1
+
+
+def test_seed_fluent_has_high_mastery_above_the_fading_band():
+    response = client.post("/sessions/seed/fluent", json={"student_id": "seed-fluent"})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["current_problem"]["skill_tag"] == "addition_carry"
+    assert body["skill_mastery"]["addition_carry"] > 0.7
+    assert body["misconception_log"] == []
+
+
+def test_seed_unknown_name_returns_404():
+    response = client.post("/sessions/seed/nope", json={"student_id": "s"})
+    assert response.status_code == 404
+
+
+def test_restore_reinstalls_state_under_the_same_session_id():
+    seeded = client.post("/sessions/seed/struggling", json={"student_id": "restore-me"})
+    session_id = seeded.json()["session_id"]
+
+    restore_body = {
+        "student_id": "restore-me",
+        "skill_mastery": {"addition_no_carry": 0.9, "addition_carry": 0.3},
+        "misconception_log": [
+            {"skill": "addition_carry", "bug_type": "add_concat_no_carry", "timestamp": "2026-09-14T00:00:00Z"}
+        ],
+        "engagement": {"streak": 0, "xp": 10, "frustration_signal": False, "consecutive_wrong": 1},
+        "problems_completed": 3,
+        "quest_length": 10,
+        "active_skill": "addition_carry",
+    }
+    response = client.post(f"/sessions/{session_id}/restore", json=restore_body)
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["session_id"] == session_id
+    assert body["skill_mastery"]["addition_carry"] == 0.3
+    assert len(body["misconception_log"]) == 1
+    # a fresh problem is generated rather than the pre-restore one recovered
+    assert body["attempt_number"] == 1
+    assert body["current_problem"]["skill_tag"] == "addition_carry"
+
+
 def test_submit_answer_logs_an_event_row(tmp_path, monkeypatch):
     monkeypatch.setattr(events, "DEFAULT_DB_PATH", tmp_path / "events.db")
 

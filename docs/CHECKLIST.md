@@ -70,9 +70,9 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 
 ### J. Demo readiness
 
-- [ ] All three seeds load directly from a URL and land in the right state.
-- [ ] Refresh mid-session: the same problem and the same attempt count come back.
-- [ ] Kill and restart the server mid-session: the frontend recovers rather than white-screening.
-- [ ] Open the live link in a fresh incognito window as a judge would. Something interesting is visible within ten seconds.
+- [ ] All three seeds load directly from a URL and land in the right state. — ready to test (2026-09-14): `?seed=new|struggling|fluent` still shows the name form (so a real name can be typed on camera), then calls `POST /sessions/seed/{name}` instead of the plain start; `struggling` lands on `addition_carry` at mastery `0.3` (manipulative open) with one prior `add_concat_no_carry` misconception, `fluent` lands on `addition_carry` at mastery `0.85` (abstract-only). Verified live in-browser.
+- [ ] Refresh mid-session: the same problem and the same attempt count come back. — ready to test (2026-09-14): unchanged `GET /sessions/{id}` path, now backed by a `SessionResponse` that also carries `skill_mastery`/`misconception_log`/`problems_completed`/`quest_length`/`attempt_number`. Verified live in-browser.
+- [ ] Kill and restart the server mid-session: the frontend recovers rather than white-screening. — ready to test (2026-09-14): a 404 on `GET` triggers `POST /sessions/{id}/restore` from the browser's own cached (correct-answer-free) snapshot, reinstalling mastery/XP/misconceptions under the same session id with a freshly generated problem on the same skill (attempt count resets to 1 — the pre-restart problem's answer was never sent to the client to begin with). A backend that's simply unreachable (not just restarted) now shows a visible "Can't reach the server" message instead of silently dropping the session. Verified live: killed and restarted uvicorn mid-session, confirmed recovery; also confirmed the fully-unreachable case shows the message and keeps the cached session.
+- [ ] Open the live link in a fresh incognito window as a judge would. Something interesting is visible within ten seconds. — unaffected by this change; still NOT ready pending Part 6 UI-shell polish.
 - [ ] LangSmith shows traces for all four LLM touchpoints.
 - [ ] The event log has one row per submission with `bug_id` populated.
