@@ -34,10 +34,10 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 
 ### E. Session actually ends
 
-- [ ] Play a full quest to completion. It stops on a summary screen and does not auto-advance. — terminal state (`end_session`) is ready to test; the screen itself is a placeholder ("Quest complete!"), not the real summary UI (Part 5/6).
+- [ ] Play a full quest to completion. It stops on a summary screen and does not auto-advance. — ready to test (2026-09-15): `SessionSummary.jsx` replaces the old placeholder; verified live in-browser via `?seed=struggling`.
 - [ ] Get four wrong in a row deliberately. The fatigue stop fires and the session wraps gently. — ready to test (2026-09-12); verified live in-browser.
-- [ ] From the summary screen, the only way forward is an explicit button. — NOT ready: no "play again" button yet.
-- [ ] Summary names specific misconceptions repaired, not just a count. — NOT ready: real end-of-quest report is Part 5/6 scope.
+- [ ] From the summary screen, the only way forward is an explicit button. — ready to test (2026-09-15): "Play again" clears the cached session and returns to the name form; verified live in-browser.
+- [ ] Summary names specific misconceptions repaired, not just a count. — ready to test (2026-09-15): misconceptions logged against a since-mastered skill are labeled with their real hint text (via new `GET /misconceptions`), deduped by `bug_type`; ones logged against a still-unmastered skill show separately under "Still practicing." Verified live in-browser.
 
 ### F. Latency — ready to test (2026-09-12)
 
@@ -73,6 +73,6 @@ Run this as a manual pass. Every item is a thing you can observe in the browser,
 - [ ] All three seeds load directly from a URL and land in the right state. — ready to test (2026-09-14): `?seed=new|struggling|fluent` still shows the name form (so a real name can be typed on camera), then calls `POST /sessions/seed/{name}` instead of the plain start; `struggling` lands on `addition_carry` at mastery `0.3` (manipulative open) with one prior `add_concat_no_carry` misconception, `fluent` lands on `addition_carry` at mastery `0.85` (abstract-only). Verified live in-browser.
 - [ ] Refresh mid-session: the same problem and the same attempt count come back. — ready to test (2026-09-14): unchanged `GET /sessions/{id}` path, now backed by a `SessionResponse` that also carries `skill_mastery`/`misconception_log`/`problems_completed`/`quest_length`/`attempt_number`. Verified live in-browser.
 - [ ] Kill and restart the server mid-session: the frontend recovers rather than white-screening. — ready to test (2026-09-14): a 404 on `GET` triggers `POST /sessions/{id}/restore` from the browser's own cached (correct-answer-free) snapshot, reinstalling mastery/XP/misconceptions under the same session id with a freshly generated problem on the same skill (attempt count resets to 1 — the pre-restart problem's answer was never sent to the client to begin with). A backend that's simply unreachable (not just restarted) now shows a visible "Can't reach the server" message instead of silently dropping the session. Verified live: killed and restarted uvicorn mid-session, confirmed recovery; also confirmed the fully-unreachable case shows the message and keeps the cached session.
-- [ ] Open the live link in a fresh incognito window as a judge would. Something interesting is visible within ten seconds. — unaffected by this change; still NOT ready pending Part 6 UI-shell polish.
+- [ ] Open the live link in a fresh incognito window as a judge would. Something interesting is visible within ten seconds. — ready to test (2026-09-15): all six Part 6 UI-shell items now implemented (number pad, hero-manipulative layout, quest map, 4-state mascot, real end-of-quest report, sound). Judgment call on "interesting within ten seconds" still needs a human look.
 - [ ] LangSmith shows traces for all four LLM touchpoints.
 - [ ] The event log has one row per submission with `bug_id` populated.

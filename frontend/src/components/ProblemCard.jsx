@@ -55,15 +55,17 @@ export default function ProblemCard({
         </div>
       )}
       {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
+      <div className="manipulative-canvas">
+        {showBundlingSticks && (
+          <BundlingSticks problem={problem} feedback={feedbackForThisProblem} mastery={mastery} />
+        )}
+        {showTenFrame && <TenFrame problem={problem} mastery={mastery} />}
+        <NumberLine problem={problem} feedback={feedbackForThisProblem} />
+      </div>
       <div className="problem-question">{problem.question}</div>
       {feedbackForThisProblem && (
         <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} />
       )}
-      {showBundlingSticks && (
-        <BundlingSticks problem={problem} feedback={feedbackForThisProblem} mastery={mastery} />
-      )}
-      {showTenFrame && <TenFrame problem={problem} mastery={mastery} />}
-      <NumberLine problem={problem} feedback={feedbackForThisProblem} />
       <NumberPad value={answer} onChange={setAnswer} onSubmit={handleSubmit} disabled={loading} />
     </div>
   );

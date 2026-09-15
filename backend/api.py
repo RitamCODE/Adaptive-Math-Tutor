@@ -19,7 +19,9 @@ now live behind a separate `GET /sessions/{id}/narrative`, which the
 frontend fetches right after rendering the instant verdict.
 """
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -41,6 +43,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+_MISCONCEPTIONS_PATH = Path(__file__).resolve().parent / "content" / "misconceptions.json"
+_MISCONCEPTIONS: dict[str, dict[str, str]] = json.loads(_MISCONCEPTIONS_PATH.read_text())
 
 _SESSIONS: dict[str, SessionState] = {}
 
@@ -129,6 +134,11 @@ class NarrativeOut(BaseModel):
     reward_narrative: str | None = None
     mastery_narrative: str | None = None
     boss_battle_narrative: str | None = None
+
+
+class MisconceptionCatalogEntry(BaseModel):
+    hint: str
+    visual: str
 
 
 def _skill_progress(mastery: dict[str, float]) -> list[SkillProgress]:
@@ -287,6 +297,14 @@ def start_session(req: StartSessionRequest, background_tasks: BackgroundTasks) -
 @app.get("/sessions/{session_id}", response_model=SessionResponse)
 def get_session(session_id: str) -> SessionResponse:
     return _to_session_response(_get_session(session_id))
+
+
+@app.get("/misconceptions", response_model=dict[str, MisconceptionCatalogEntry])
+def get_misconception_catalog() -> dict[str, MisconceptionCatalogEntry]:
+    """Static bug_type -> {hint, visual} catalog, same source file
+    `grade_and_diagnose` reads from. Session-independent; used by the
+    end-of-quest report to label misconceptions by name rather than code."""
+    return {bug_type: MisconceptionCatalogEntry(**entry) for bug_type, entry in _MISCONCEPTIONS.items()}
 
 
 @app.post("/sessions/seed/{name}", response_model=SessionResponse)

@@ -5,6 +5,8 @@ import ProblemCard from "./components/ProblemCard";
 import SkillTrailMap from "./components/SkillTrailMap";
 import StatsBar from "./components/StatsBar";
 import Mascot from "./components/Mascot";
+import SessionSummary from "./components/SessionSummary";
+import { playCorrectTone, playQuestComplete } from "./lib/sound";
 import "./App.css";
 
 // Holds { session_id, snapshot } where `snapshot` is the last full
@@ -44,6 +46,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [resuming, setResuming] = useState(true);
   const problemStartRef = useRef(Date.now());
+  const sessionStartRef = useRef(null);
   const [seed] = useState(seedFromUrl);
 
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function App() {
       setResuming(false);
       return;
     }
+    sessionStartRef.current = cached.startedAt ?? Date.now();
     getSession(cached.session_id)
       .then((data) => setSessionData(data))
       .catch((err) => {
@@ -95,7 +99,11 @@ export default function App() {
     if (!sessionData) return;
     localStorage.setItem(
       SESSION_STORAGE_KEY,
-      JSON.stringify({ session_id: sessionData.session_id, snapshot: sessionData })
+      JSON.stringify({
+        session_id: sessionData.session_id,
+        snapshot: sessionData,
+        startedAt: sessionStartRef.current,
+      })
     );
   }, [sessionData]);
 
@@ -106,9 +114,24 @@ export default function App() {
   useEffect(() => {
     if (!feedback) return;
     setReaction(feedback.correct ? "correct" : "incorrect");
+    if (feedback.correct) playCorrectTone();
     const timer = setTimeout(() => setReaction("idle"), REACTION_DURATION_MS);
     return () => clearTimeout(timer);
   }, [feedback]);
+
+  const questComplete = sessionData && sessionData.next_action === "end_session";
+
+  useEffect(() => {
+    if (questComplete) playQuestComplete();
+  }, [questComplete]);
+
+  function handlePlayAgain() {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionStartRef.current = null;
+    setSessionData(null);
+    setFeedback(null);
+    setReaction("idle");
+  }
 
   function handleStart(studentId) {
     setLoading(true);
@@ -116,6 +139,7 @@ export default function App() {
     const starter = seed ? seedSession(seed, studentId) : startSession(studentId);
     starter
       .then((data) => {
+        sessionStartRef.current = Date.now();
         setSessionData(data);
         // Once we've actually landed in the seeded state, drop ?seed= so a
         // later plain refresh rehydrates normally instead of re-seeding and
@@ -130,6 +154,7 @@ export default function App() {
     const timeTakenSec = (Date.now() - problemStartRef.current) / 1000;
     setLoading(true);
     setError(null);
+    setReaction("thinking");
     const sessionId = sessionData.session_id;
     submitAnswer(sessionId, answer, timeTakenSec)
       .then((data) => {
@@ -155,7 +180,6 @@ export default function App() {
   }
 
   const masteredCount = sessionData?.skill_progress?.filter((entry) => entry.mastered).length ?? 0;
-  const questComplete = sessionData && sessionData.next_action === "end_session";
 
   return (
     <div className="app-shell">
@@ -177,7 +201,11 @@ export default function App() {
           </div>
           <div className="main-panel">
             {questComplete ? (
-              <div className="problem-card quest-complete">Quest complete! Nice work today.</div>
+              <SessionSummary
+                sessionData={sessionData}
+                elapsedMs={Date.now() - (sessionStartRef.current ?? Date.now())}
+                onPlayAgain={handlePlayAgain}
+              />
             ) : (
               sessionData.current_problem && (
                 <ProblemCard

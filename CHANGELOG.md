@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-15 — UI shell: end-of-quest report, sound, hero-manipulative layout, mascot states (revision-plan Part 6)
+
+Replaced the hardcoded "Quest complete!" placeholder with a real `SessionSummary.jsx`
+naming mastered skills, misconceptions repaired (labeled via a new `GET /misconceptions`
+endpoint serving the existing `misconceptions.json` catalog, tied to mastery so a
+misconception on a since-demoted skill shows separately under "Still practicing" rather
+than being claimed as fixed), problems solved, elapsed time (a new `sessionStartRef` in
+`App.jsx`, persisted to `localStorage` so it survives a refresh), and a "Play again"
+button. Added three Web Audio API synthesized sound effects (`frontend/src/lib/sound.js`,
+no binary assets/dependencies) for correct answers, bundling-sticks snapping into a ten,
+and quest completion. Reordered `ProblemCard.jsx` so the manipulative canvas renders
+before the equation, with new CSS (`:has()`-based) demoting the equation to a caption
+only when a manipulative is actually present. Added a `"thinking"` mascot state wired to
+the submit-to-verdict `loading` window, and softened the wrong-answer face to read as
+encouraging rather than sad, per revision-plan Part 6 items 2, 4, 5, 6 (items 1 and 3,
+the number pad and quest map, were already done). Verified live in-browser end to end
+(seeded and fresh sessions, correct/incorrect/quest-complete paths); backend suite stays
+green (111 tests).
+
 ## 2026-09-14 — Seeded sessions and localStorage restart recovery (revision-plan Part 7.1/7.2)
 
 Added `POST /sessions/seed/{new|struggling|fluent}`, backing a `?seed=` URL param the demo

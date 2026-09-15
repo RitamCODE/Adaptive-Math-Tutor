@@ -1,8 +1,9 @@
 const STAGE_LABELS = ["a seed", "a sprout", "a sapling", "a budding flower", "a bloomed flower"];
+const REACTION_LABELS = { idle: "calm", thinking: "thinking it over", correct: "delighted", incorrect: "encouraging" };
 
 export default function Mascot({ masteredCount, reaction, frustration }) {
   const stage = Math.max(0, Math.min(4, masteredCount));
-  const label = `Your companion, currently ${STAGE_LABELS[stage]}, feeling ${reaction}`;
+  const label = `Your companion, currently ${STAGE_LABELS[stage]}, feeling ${REACTION_LABELS[reaction] ?? reaction}`;
 
   return (
     <div
@@ -49,13 +50,21 @@ export default function Mascot({ masteredCount, reaction, frustration }) {
               <path className="mascot-eye" d="M68 70 Q73 64 78 70" />
               <path className="mascot-mouth" d="M45 82 Q60 96 75 82" />
             </>
+          ) : reaction === "thinking" ? (
+            <>
+              <circle className="mascot-eye-dot" cx="49" cy="68" r="3" />
+              <circle className="mascot-eye-dot" cx="75" cy="68" r="3" />
+              <path className="mascot-brow" d="M42 60 Q47 57 53 60" />
+              <path className="mascot-brow" d="M71 60 Q77 57 82 60" />
+              <path className="mascot-mouth" d="M52 85 Q60 82 68 85" />
+            </>
           ) : reaction === "incorrect" ? (
             <>
               <circle className="mascot-eye-dot" cx="47" cy="70" r="3" />
               <circle className="mascot-eye-dot" cx="73" cy="70" r="3" />
-              <path className="mascot-brow" d="M40 62 L52 65" />
-              <path className="mascot-brow" d="M80 62 L68 65" />
-              <path className="mascot-mouth" d="M50 86 Q60 83 70 86" />
+              <path className="mascot-brow" d="M41 61 Q46 58 53 61" />
+              <path className="mascot-brow" d="M79 61 Q74 58 67 61" />
+              <path className="mascot-mouth" d="M48 85 Q60 88 72 85" />
             </>
           ) : (
             <>
@@ -65,6 +74,14 @@ export default function Mascot({ masteredCount, reaction, frustration }) {
             </>
           )}
         </g>
+
+        {reaction === "thinking" && (
+          <g className="mascot-think-dots" aria-hidden="true">
+            <circle className="think-dot d1" cx="88" cy="52" r="3" />
+            <circle className="think-dot d2" cx="97" cy="45" r="2.4" />
+            <circle className="think-dot d3" cx="104" cy="37" r="1.8" />
+          </g>
+        )}
 
         {reaction === "correct" && (
           <g className="mascot-sparkles">

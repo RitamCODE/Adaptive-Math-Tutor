@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseQuestion, toBlocks } from "../lib/arithmetic";
+import { playBundleSnap } from "../lib/sound";
 
 const PLACE_ORDER = ["ones", "tens", "hundreds"];
 const PLACE_LABEL = { ones: "Ones", tens: "Tens", hundreds: "Hundreds" };
@@ -154,6 +155,7 @@ export default function BundlingSticks({ problem, feedback, mastery }) {
     setAnimInfo({ direction, place, phase: "glow" });
     const t1 = setTimeout(() => {
       setAnimInfo((info) => (info ? { ...info, phase: "snap" } : info));
+      if (direction === "bundle") playBundleSnap();
       const t2 = setTimeout(() => {
         setColumns((cols) => {
           const idx = PLACE_ORDER.indexOf(place);

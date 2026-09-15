@@ -49,3 +49,7 @@ export function submitAnswer(sessionId, answer, timeTakenSec) {
 export function getNarrative(sessionId) {
   return fetch(`${API_BASE}/sessions/${sessionId}/narrative`).then(handle);
 }
+
+export function getMisconceptionCatalog() {
+  return fetch(`${API_BASE}/misconceptions`).then(handle);
+}
