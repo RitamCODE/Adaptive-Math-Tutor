@@ -109,6 +109,8 @@ npm run dev        # http://localhost:5173
 
 An `OPENAI_API_KEY` in a repo-root `.env` is optional — without it, all four narrative touchpoints silently fall back to hardcoded copy instead of failing.
 
+`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, and `LANGSMITH_PROJECT` in the same `.env` are also optional — without them, the app runs identically, just untraced. With them set, each of the four narrative touchpoints (the LLM calls listed above) shows up as a traced run at [smith.langchain.com](https://smith.langchain.com) under the named project.
+
 ```bash
 uv run pytest       # backend test suite
 ```
@@ -121,7 +123,7 @@ uv run pytest       # backend test suite
 - LangGraph routing including the three-attempt retry ladder, prerequisite demotion, and session termination (quest length, 2 skills mastered, or 4 consecutive wrong)
 - Non-signal handling (blank/rapid-guess answers skip BKT and the attempt counter, but still hit the event log)
 - SQLite event log, one row per submission — the substrate the misconception catalog is meant to keep growing from
-- The four LLM touchpoints, fail-open, isolated to one file
+- The four LLM touchpoints, fail-open, isolated to one file, traced to LangSmith when `LANGSMITH_*` env vars are set
 - Latency split: the verdict is a pure ~6-15ms round trip; narrative is fetched separately and never blocks it
 - Vite + React frontend end to end: number pad, skill trail map, growth-stage mascot, responsive mobile/tablet/laptop layout
 
@@ -129,7 +131,6 @@ uv run pytest       # backend test suite
 - Manipulatives — drag-and-drop base-10 blocks, the piece the plan calls the actual demo-winner; the `visual` payload is populated end to end but nothing renders it yet
 - The worked-solution animation on the third failed attempt
 - A real end-of-quest report naming specific misconceptions repaired (currently a placeholder "Quest complete!" screen, no replay button)
-- LangSmith tracing (no `langsmith` dependency or env vars wired in yet)
 - Seeded demo profiles (`?seed=new|struggling|fluent`) and refresh-mid-session recovery
 - Session *state* persistence beyond the process lifetime — the new event log is durable SQLite, but `SessionState` itself still lives in an in-memory dict and is lost on backend restart
 

@@ -21,12 +21,20 @@ Topology (see CLAUDE.md's routing spec):
     "decide_engagement" --[route_after_engagement]--> "end_session"      (fatigue stop, or
                                                                           quest/mastery limits)
     "decide_engagement" --[route_after_engagement]--> "advance_skill"    (correct, mastery >= threshold)
-    "decide_engagement" --[route_after_engagement]--> "new_problem"      (correct, otherwise)
+    "decide_engagement" --[route_after_engagement]--> "new_problem"      (correct, otherwise, including
+                                                                          progress toward a pending resurface)
+    "decide_engagement" --[route_after_engagement]--> "resurface_skill"  (correct, 2nd correct answer on
+                                                                          the prerequisite of a demoted skill)
     "decide_engagement" --[route_after_engagement]--> "retry_problem"    (wrong, attempt < 3)
-    "decide_engagement" --[route_after_engagement]--> "demote_skill"     (wrong, attempt >= 3)
+    "decide_engagement" --[route_after_engagement]--> "demote_skill"     (wrong, attempt >= 3, not
+                                                                          already resurfaced once)
+    "decide_engagement" --[route_after_engagement]--> "end_session"      (wrong, attempt >= 3, on a
+                                                                          skill already resurfaced once:
+                                                                          end on the lower-level win
+                                                                          instead of grinding further)
 
     "generate_problem", "hold_non_signal", "end_session", "advance_skill",
-    "new_problem", "retry_problem", "demote_skill" -> END
+    "new_problem", "retry_problem", "demote_skill", "resurface_skill" -> END
 
 No checkpointer/persistence: a scripted driver threads `SessionState` through
 Python by calling `graph.invoke()` once per turn, feeding a fresh
@@ -128,12 +136,29 @@ def update_mastery_node(state: SessionState) -> dict:
     """Skips the BKT update for `digit_reversal`: CLAUDE.md says the
     underlying skill is intact and mastery must not be penalized, even
     though the wrong answer still consumes an attempt and goes through the
-    normal retry ladder (handled elsewhere — this node only owns mastery)."""
-    if state.attempt_history and state.attempt_history[-1][1] == "digit_reversal":
-        return {}
-    skill = state.current_problem.skill_tag
-    new_mastery = bkt_update_mastery(state.skill_mastery, skill, state.last_response.correct, BKTParams())
-    return {"skill_mastery": new_mastery}
+    normal retry ladder (handled elsewhere — this node only owns mastery).
+
+    Also tracks progress toward re-surfacing a demoted skill (revision-plan
+    7.3): a correct, signal-bearing answer on the prerequisite of
+    `state.pending_resurface` counts toward the two answers required before
+    the demoted skill comes back. This has to happen here, before
+    route_after_engagement runs, so the router sees this turn's count.
+    """
+    updates: dict = {}
+    if not (state.attempt_history and state.attempt_history[-1][1] == "digit_reversal"):
+        skill = state.current_problem.skill_tag
+        updates["skill_mastery"] = bkt_update_mastery(
+            state.skill_mastery, skill, state.last_response.correct, BKTParams()
+        )
+
+    if (
+        state.pending_resurface is not None
+        and state.last_response.correct
+        and state.current_problem.skill_tag == DEFAULT_SKILL_GRAPH.prerequisites_of(state.pending_resurface)[0]
+    ):
+        updates["resurface_progress"] = state.resurface_progress + 1
+
+    return updates
 
 
 def decide_engagement_node(state: SessionState) -> dict:
@@ -181,6 +206,11 @@ def demote_skill_node(state: SessionState) -> dict:
     A root skill with no prerequisite (e.g. addition_no_carry) has nothing to
     demote to; fall back to a fresh problem on the same skill instead of a
     fabricated demotion.
+
+    Queues the demoted skill for a one-time resurface (revision-plan 7.3),
+    unless a resurface is already pending for a different skill — in that
+    rare double-demotion case, the first pending resurface wins and this
+    one is not tracked, rather than building a stack of pending resurfaces.
     """
     skill = state.current_problem.skill_tag
     prereqs = DEFAULT_SKILL_GRAPH.prerequisites_of(skill)
@@ -194,10 +224,36 @@ def demote_skill_node(state: SessionState) -> dict:
 
     target = prereqs[0]
     problem = pure_generate_problem(target, _difficulty_for(state.skill_mastery, target))
-    return {
+    updates = {
         "current_problem": problem, "next_action": "demote_skill", "last_response": None,
         "attempt_number": 1, "attempt_history": [],
         "problems_completed": state.problems_completed + 1,
+    }
+    if state.pending_resurface is None:
+        updates["pending_resurface"] = skill
+        updates["resurface_progress"] = 0
+    return updates
+
+
+def resurface_skill_node(state: SessionState) -> dict:
+    """Two correct answers on the prerequisite since a demotion: bring the
+    demoted skill back once (revision-plan 7.3). Records the skill in
+    `resurfaced_skills` so a second attempt-3 failure on it ends the quest
+    on the lower-level win instead of demoting-and-resurfacing again.
+
+    `next_action` is "new_problem", not "advance_skill" — this skill's
+    mastery is still below threshold, so treating this as a mastery advance
+    would incorrectly fire the mastery-moment LLM narrative.
+    """
+    skill = state.pending_resurface
+    problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
+    return {
+        "current_problem": problem, "next_action": "new_problem", "last_response": None,
+        "attempt_number": 1, "attempt_history": [],
+        "problems_completed": state.problems_completed + 1,
+        "pending_resurface": None,
+        "resurface_progress": 0,
+        "resurfaced_skills": [*state.resurfaced_skills, skill],
     }
 
 
@@ -233,7 +289,20 @@ def route_after_engagement(state: SessionState) -> str:
 
     if correct:
         skill = state.current_problem.skill_tag
+        if state.pending_resurface is not None and skill == DEFAULT_SKILL_GRAPH.prerequisites_of(state.pending_resurface)[0]:
+            # Two correct answers on the prerequisite, regardless of its own
+            # mastery, bring the demoted skill back — deliberately bypassing
+            # the mastery-threshold check below, since that prerequisite is
+            # typically already mastered (that's how the student reached the
+            # now-demoted skill in the first place), which would otherwise
+            # resurface after just one correct answer via "advance_skill".
+            return "resurface_skill" if state.resurface_progress >= 2 else "new_problem"
         return "advance_skill" if state.skill_mastery.get(skill, 0.0) >= MASTERY_THRESHOLD else "new_problem"
+
+    if state.current_problem.skill_tag in state.resurfaced_skills:
+        # Already used its one resurface chance and failed again: end the
+        # quest on the lower-level win rather than demoting further.
+        return "end_session"
     return "demote_skill"
 
 
@@ -250,6 +319,7 @@ def build_graph() -> StateGraph:
     graph.add_node("new_problem", new_problem_node)
     graph.add_node("retry_problem", retry_problem_node)
     graph.add_node("demote_skill", demote_skill_node)
+    graph.add_node("resurface_skill", resurface_skill_node)
     graph.add_node("end_session", end_session_node)
 
     graph.add_conditional_edges(
@@ -277,6 +347,7 @@ def build_graph() -> StateGraph:
             "new_problem": "new_problem",
             "retry_problem": "retry_problem",
             "demote_skill": "demote_skill",
+            "resurface_skill": "resurface_skill",
         },
     )
     graph.add_edge("generate_problem", END)
@@ -285,6 +356,7 @@ def build_graph() -> StateGraph:
     graph.add_edge("new_problem", END)
     graph.add_edge("retry_problem", END)
     graph.add_edge("demote_skill", END)
+    graph.add_edge("resurface_skill", END)
     graph.add_edge("end_session", END)
 
     return graph

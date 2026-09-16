@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-15 — Deterministic per-problem praise, touchpoint 3 gating, feedback display timing
+
+Closed a spec gap flagged during review: `FeedbackBanner.jsx` was rendering the touchpoint-3
+LLM narrative directly as the per-problem "Correct!" line instead of the deterministic
+four-branch lookup CLAUDE.md's copy-limits section requires. Added `frontend/src/lib/praise.js`
+(effort > strategy > speed > named-skill, each capped to 4 words) and fixed the root cause in
+`backend/api.py`: the reward-narrative context was being queued on every correct answer
+(`if diagnosis.correct`) instead of only at the mastery moment (`next_action == "advance_skill"`),
+so touchpoint 3 was firing ~10x more than its own spec allows. Also discovered and fixed a
+pre-existing bug where a correct answer's graph turn advances `current_problem` in the same
+response as its feedback, leaving no render frame for any correct-answer banner (old or new) to
+appear in — `App.jsx` now holds a `displayData` snapshot behind the live `sessionData` for a
+timed delay (longer at the mastery moment, to give the async narrative fetch a chance to
+resolve) before revealing the next problem or the end-of-quest screen. 3 new backend tests;
+full suite (128) green; all four praise branches confirmed live in the browser.
+
+## 2026-09-15 — Word-problem length cap, LangSmith tracing, skill resurfacing (revision-plan Part 7.3/7.4/7.5)
+
+Closed the three remaining Part 7 demo-readiness gaps. `flavor_word_problem` now enforces
+the 20-word/one-name/one-object/digits-not-words cap in its prompt and validates the
+result in code, regenerating once with a "too long" nudge before falling back to `None`
+(plain numeric problem) if it still overruns. Added `langsmith` as a dependency (the
+CLAUDE.md-pre-authorized exception) and wrapped the OpenAI client with
+`langsmith.wrappers.wrap_openai` in `_client()` — necessary because all four narrative
+touchpoints run from FastAPI background tasks and a separate endpoint, never inside
+`graph.app.invoke()`, so LangGraph's own auto-tracing would never see them. Implemented
+skill resurfacing: `SessionState` gained `pending_resurface`/`resurface_progress`/
+`resurfaced_skills`, `demote_skill_node` now queues the demoted skill, a new
+`resurface_skill_node` brings it back after two correct answers on the prerequisite
+(deliberately bypassing the mastery-threshold check, since that prerequisite is usually
+already mastered and would otherwise resurface after one answer via a misfired
+`advance_skill`), and a second attempt-3 failure on the resurfaced skill ends the quest
+rather than demoting again. Threaded the three new fields through `SessionResponse`/
+`RestoreRequest`/`_install_seeded_state` and `App.jsx`'s restore call so a refresh
+mid-resurface-window doesn't silently drop it. 20 new tests; full suite (125) green.
+
 ## 2026-09-15 — UI shell: end-of-quest report, sound, hero-manipulative layout, mascot states (revision-plan Part 6)
 
 Replaced the hardcoded "Quest complete!" placeholder with a real `SessionSummary.jsx`

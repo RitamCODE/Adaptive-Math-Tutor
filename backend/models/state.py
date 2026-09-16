@@ -71,6 +71,9 @@ class SessionState(BaseModel):
     engagement: EngagementState
     problems_completed: int = 0
     quest_length: int = 10
+    pending_resurface: str | None = None  # skill demoted FROM, awaiting resurface (revision-plan 7.3)
+    resurface_progress: int = 0  # correct answers on the prerequisite since that demotion
+    resurfaced_skills: list[str] = []  # skills that already used their one resurface chance
     next_action: Literal[
         "new_problem", "retry_problem", "remediate",
         "advance_skill", "demote_skill", "end_session",

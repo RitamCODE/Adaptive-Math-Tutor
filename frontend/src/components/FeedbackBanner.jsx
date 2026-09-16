@@ -2,7 +2,8 @@ export default function FeedbackBanner({ feedback, justAdvanced }) {
   if (feedback.correct) {
     return (
       <div className="feedback feedback-correct">
-        <div>{feedback.reward_narrative || "Correct!"}</div>
+        <div>{feedback.praise ?? "Correct!"}</div>
+        {justAdvanced && feedback.reward_narrative && <div>{feedback.reward_narrative}</div>}
         {justAdvanced && (
           <div>{feedback.mastery_narrative || "Skill mastered — on to the next one!"}</div>
         )}

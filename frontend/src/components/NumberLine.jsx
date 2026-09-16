@@ -23,7 +23,7 @@ function zeroCounts() {
  * uses) so a 3-digit operand still means at most 9 hops per place, not
  * hundreds of individual unit hops.
  */
-export default function NumberLine({ problem, feedback }) {
+export default function NumberLine({ problem, feedback, onInteract }) {
   const parsed = parseQuestion(problem.question);
 
   const isForcedDiagnostic =
@@ -65,6 +65,7 @@ export default function NumberLine({ problem, feedback }) {
   }
 
   function handleHopPointerDown(e, place) {
+    onInteract?.();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ place, pointerId: e.pointerId });
     moveGhost(e.clientX, e.clientY);

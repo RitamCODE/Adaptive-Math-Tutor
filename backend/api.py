@@ -74,6 +74,11 @@ class RestoreRequest(BaseModel):
     problems_completed: int
     quest_length: int
     active_skill: str
+    # Revision-plan 7.3 resurface bookkeeping — defaulted so a snapshot cached
+    # before this field existed still restores cleanly.
+    pending_resurface: str | None = None
+    resurface_progress: int = 0
+    resurfaced_skills: list[str] = []
 
 
 class AnswerRequest(BaseModel):
@@ -112,6 +117,9 @@ class SessionResponse(BaseModel):
     problems_completed: int
     quest_length: int
     attempt_number: int
+    pending_resurface: str | None
+    resurface_progress: int
+    resurfaced_skills: list[str]
 
 
 class Feedback(BaseModel):
@@ -124,6 +132,7 @@ class Feedback(BaseModel):
     reveal_answer: bool
     correct_answer: int | None = None  # never sent before attempt 3, per CLAUDE.md constraint #7
     skill_tag: str
+    prior_avg_time_sec: float | None = None
 
 
 class AnswerResponse(SessionResponse):
@@ -177,6 +186,9 @@ def _to_session_response(state: SessionState) -> SessionResponse:
         problems_completed=state.problems_completed,
         quest_length=state.quest_length,
         attempt_number=state.attempt_number,
+        pending_resurface=state.pending_resurface,
+        resurface_progress=state.resurface_progress,
+        resurfaced_skills=state.resurfaced_skills,
     )
 
 
@@ -217,6 +229,9 @@ def _install_seeded_state(
     problems_completed: int,
     quest_length: int,
     active_skill: str,
+    pending_resurface: str | None = None,
+    resurface_progress: int = 0,
+    resurfaced_skills: list[str] | None = None,
 ) -> SessionState:
     """Install a fully-formed session directly into `_SESSIONS`, without
     running it through the graph (the same "read the state back as-is"
@@ -243,6 +258,9 @@ def _install_seeded_state(
         problems_completed=problems_completed,
         quest_length=quest_length,
         next_action="new_problem",
+        pending_resurface=pending_resurface,
+        resurface_progress=resurface_progress,
+        resurfaced_skills=resurfaced_skills if resurfaced_skills is not None else [],
     )
     _SESSIONS[session_id] = state
     return state
@@ -346,6 +364,9 @@ def restore_session(
         problems_completed=req.problems_completed,
         quest_length=req.quest_length,
         active_skill=req.active_skill,
+        pending_resurface=req.pending_resurface,
+        resurface_progress=req.resurface_progress,
+        resurfaced_skills=req.resurfaced_skills,
     )
     background_tasks.add_task(_refresh_flavor_text, new_state.session_id, new_state.current_problem)
     return _to_session_response(new_state)
@@ -424,19 +445,21 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
 
     skill_attempts = _ATTEMPTS.setdefault(session_id, {})
     record = skill_attempts.setdefault(problem.skill_tag, {"count": 0, "total_time_sec": 0.0})
+    prior_count = record["count"]
+    prior_total_time_sec = record["total_time_sec"]
+    prior_avg_time_sec = prior_total_time_sec / prior_count if prior_count else None
     record["count"] += 1
     record["total_time_sec"] += req.time_taken_sec
 
     context_id = uuid4().hex
     narrative_context: dict = {}
-    if diagnosis.correct:
+    if new_state.next_action == "advance_skill":
+        mastered_skill = problem.skill_tag
         narrative_context["reward"] = {
             "skill_tag": problem.skill_tag,
             "attempt_count": record["count"],
             "avg_time_sec": record["total_time_sec"] / record["count"],
         }
-    if new_state.next_action == "advance_skill":
-        mastered_skill = problem.skill_tag
         narrative_context["mastery"] = {
             "skill": mastered_skill,
             "misconceptions": [m for m in new_state.misconception_log if m.skill == mastered_skill],
@@ -461,6 +484,7 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
             if (diagnosis.correct or (remediation and remediation.reveal_answer))
             else None,
             skill_tag=problem.skill_tag,
+            prior_avg_time_sec=prior_avg_time_sec if diagnosis.correct else None,
         ),
     )
 

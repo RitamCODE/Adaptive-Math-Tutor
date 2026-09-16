@@ -7,6 +7,7 @@ import StatsBar from "./components/StatsBar";
 import Mascot from "./components/Mascot";
 import SessionSummary from "./components/SessionSummary";
 import { playCorrectTone, playQuestComplete } from "./lib/sound";
+import { selectPraise } from "./lib/praise";
 import "./App.css";
 
 // Holds { session_id, snapshot } where `snapshot` is the last full
@@ -15,6 +16,16 @@ import "./App.css";
 // (via POST .../restore), without ever caching a correct_answer.
 const SESSION_STORAGE_KEY = "adaptive-math-tutor:session";
 const REACTION_DURATION_MS = 1600;
+// A correct answer's graph turn already advances to the next problem (or
+// ends the session) in the same response as the feedback for the one just
+// answered — without a display delay, the feedback for a correct answer
+// would never get a render frame of its own. These hold the just-answered
+// problem (and its praise line) on screen before `displayData` reveals the
+// next state. The mastery-moment window is longer so the async LLM
+// narrative (touchpoints 2-4, fetched via getNarrative right after) has a
+// realistic chance to resolve and be read before advancing.
+const ADVANCE_DELAY_MS = 1600;
+const MASTERY_ADVANCE_DELAY_MS = 4000;
 const VALID_SEEDS = ["new", "struggling", "fluent"];
 
 function loadCachedSession() {
@@ -38,7 +49,14 @@ function stripSeedFromUrl() {
 }
 
 export default function App() {
+  // `sessionData` is the latest truth from the server. `displayData` is what
+  // the UI actually renders — it matches `sessionData` immediately except
+  // right after a correct answer, when it intentionally lags behind for
+  // ADVANCE_DELAY_MS/MASTERY_ADVANCE_DELAY_MS so the just-answered problem's
+  // feedback banner gets a chance to be seen before the next problem (or the
+  // end-of-quest screen) replaces it.
   const [sessionData, setSessionData] = useState(null);
+  const [displayData, setDisplayData] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [justAdvanced, setJustAdvanced] = useState(false);
   const [reaction, setReaction] = useState("idle");
@@ -47,7 +65,13 @@ export default function App() {
   const [resuming, setResuming] = useState(true);
   const problemStartRef = useRef(Date.now());
   const sessionStartRef = useRef(null);
+  const advanceTimerRef = useRef(null);
   const [seed] = useState(seedFromUrl);
+
+  function hydrate(data) {
+    setSessionData(data);
+    setDisplayData(data);
+  }
 
   useEffect(() => {
     // A seeded link always starts fresh through the name form below, taking
@@ -63,7 +87,7 @@ export default function App() {
     }
     sessionStartRef.current = cached.startedAt ?? Date.now();
     getSession(cached.session_id)
-      .then((data) => setSessionData(data))
+      .then((data) => hydrate(data))
       .catch((err) => {
         // Backend restarted and lost this session: rebuild it from our own
         // cached (correct_answer-free) snapshot instead of losing progress.
@@ -77,7 +101,10 @@ export default function App() {
             problems_completed: snap.problems_completed,
             quest_length: snap.quest_length,
             active_skill: snap.current_problem.skill_tag,
-          }).then((data) => setSessionData(data));
+            pending_resurface: snap.pending_resurface,
+            resurface_progress: snap.resurface_progress,
+            resurfaced_skills: snap.resurfaced_skills,
+          }).then((data) => hydrate(data));
         }
         throw err;
       })
@@ -109,7 +136,7 @@ export default function App() {
 
   useEffect(() => {
     problemStartRef.current = Date.now();
-  }, [sessionData?.current_problem?.problem_id]);
+  }, [displayData?.current_problem?.problem_id]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -119,16 +146,20 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [feedback]);
 
-  const questComplete = sessionData && sessionData.next_action === "end_session";
+  const questComplete = displayData && displayData.next_action === "end_session";
 
   useEffect(() => {
     if (questComplete) playQuestComplete();
   }, [questComplete]);
 
+  useEffect(() => () => clearTimeout(advanceTimerRef.current), []);
+
   function handlePlayAgain() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStartRef.current = null;
+    clearTimeout(advanceTimerRef.current);
     setSessionData(null);
+    setDisplayData(null);
     setFeedback(null);
     setReaction("idle");
   }
@@ -140,7 +171,7 @@ export default function App() {
     starter
       .then((data) => {
         sessionStartRef.current = Date.now();
-        setSessionData(data);
+        hydrate(data);
         // Once we've actually landed in the seeded state, drop ?seed= so a
         // later plain refresh rehydrates normally instead of re-seeding and
         // discarding whatever progress happened since.
@@ -150,8 +181,9 @@ export default function App() {
       .finally(() => setLoading(false));
   }
 
-  function handleSubmitAnswer(answer) {
+  function handleSubmitAnswer(answer, usedManipulative) {
     const timeTakenSec = (Date.now() - problemStartRef.current) / 1000;
+    const attemptNumber = sessionData.attempt_number;
     setLoading(true);
     setError(null);
     setReaction("thinking");
@@ -159,10 +191,39 @@ export default function App() {
     submitAnswer(sessionId, answer, timeTakenSec)
       .then((data) => {
         setSessionData(data);
-        setFeedback(data.feedback);
-        setJustAdvanced(data.next_action === "advance_skill");
+        if (data.feedback.correct) {
+          const praise = selectPraise({
+            skillTag: data.feedback.skill_tag,
+            mastery: data.skill_mastery[data.feedback.skill_tag],
+            attemptNumber,
+            timeTakenSec,
+            priorAvgTimeSec: data.feedback.prior_avg_time_sec,
+            usedManipulative,
+          });
+          setFeedback({ ...data.feedback, praise });
+          const advanced = data.next_action === "advance_skill";
+          setJustAdvanced(advanced);
+          // Keep displayData (and the just-answered problem's card) on
+          // screen for a beat instead of jumping straight to whatever this
+          // turn's graph invocation already advanced to server-side.
+          clearTimeout(advanceTimerRef.current);
+          advanceTimerRef.current = setTimeout(
+            () => {
+              setDisplayData(data);
+              setLoading(false);
+            },
+            advanced ? MASTERY_ADVANCE_DELAY_MS : ADVANCE_DELAY_MS
+          );
+        } else {
+          setFeedback(data.feedback);
+          setJustAdvanced(false);
+          setDisplayData(data);
+          setLoading(false);
+        }
         // Off the submit-to-verdict critical path: fire-and-forget, merge in
-        // whenever the narrative text resolves (it may already be cached).
+        // whenever the narrative text resolves (it may already be cached) —
+        // while the just-answered problem's feedback banner is still the one
+        // on screen, per the delayed displayData update above.
         getNarrative(sessionId)
           .then((narrativeData) => {
             setFeedback((prev) =>
@@ -171,51 +232,53 @@ export default function App() {
           })
           .catch(() => {});
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
   }
 
   if (resuming) {
     return <div className="app-shell">Loading…</div>;
   }
 
-  const masteredCount = sessionData?.skill_progress?.filter((entry) => entry.mastered).length ?? 0;
+  const masteredCount = displayData?.skill_progress?.filter((entry) => entry.mastered).length ?? 0;
 
   return (
     <div className="app-shell">
       <h1>Adaptive Math Tutor</h1>
       {error && <div className="error-banner">{error}</div>}
 
-      {!sessionData ? (
+      {!displayData ? (
         <StudentIdForm onStart={handleStart} loading={loading} />
       ) : (
         <>
-          <StatsBar engagement={sessionData.engagement} />
+          <StatsBar engagement={displayData.engagement} />
           <div className="side-panel">
             <Mascot
               masteredCount={masteredCount}
               reaction={reaction}
-              frustration={sessionData.engagement.frustration_signal}
+              frustration={displayData.engagement.frustration_signal}
             />
-            <SkillTrailMap skillProgress={sessionData.skill_progress} />
+            <SkillTrailMap skillProgress={displayData.skill_progress} />
           </div>
           <div className="main-panel">
             {questComplete ? (
               <SessionSummary
-                sessionData={sessionData}
+                sessionData={displayData}
                 elapsedMs={Date.now() - (sessionStartRef.current ?? Date.now())}
                 onPlayAgain={handlePlayAgain}
               />
             ) : (
-              sessionData.current_problem && (
+              displayData.current_problem && (
                 <ProblemCard
-                  problem={sessionData.current_problem}
+                  problem={displayData.current_problem}
                   onSubmit={handleSubmitAnswer}
                   loading={loading}
                   flashState={reaction === "idle" ? null : reaction}
                   feedback={feedback}
                   justAdvanced={justAdvanced}
-                  skillProgress={sessionData.skill_progress}
+                  skillProgress={displayData.skill_progress}
                 />
               )
             )}

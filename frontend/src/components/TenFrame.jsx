@@ -24,7 +24,7 @@ function bandFromMastery(mastery) {
  * bucket only ever generates single-digit a+b<=9, which is exactly what one
  * frame can show.
  */
-export default function TenFrame({ problem, mastery }) {
+export default function TenFrame({ problem, mastery, onInteract }) {
   const parsed = parseQuestion(problem.question);
   const band = bandFromMastery(mastery ?? 0);
   const resetKey = problem.problem_id;
@@ -65,6 +65,7 @@ export default function TenFrame({ problem, mastery }) {
 
   function handleDotPointerDown(e) {
     if (remaining <= 0) return;
+    onInteract?.();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ pointerId: e.pointerId });
     moveGhost(e.clientX, e.clientY);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NumberPad from "./NumberPad";
 import FeedbackBanner from "./FeedbackBanner";
 import BundlingSticks from "./BundlingSticks";
@@ -29,11 +29,20 @@ export default function ProblemCard({
   skillProgress,
 }) {
   const [answer, setAnswer] = useState("");
+  const usedManipulativeRef = useRef(false);
+
+  useEffect(() => {
+    usedManipulativeRef.current = false;
+  }, [problem.problem_id]);
 
   function handleSubmit() {
     if (answer.trim() === "") return;
-    onSubmit(Number(answer));
+    onSubmit(Number(answer), usedManipulativeRef.current);
     setAnswer("");
+  }
+
+  function markManipulativeUsed() {
+    usedManipulativeRef.current = true;
   }
 
   const feedbackForThisProblem = feedback && feedback.problem_id === problem.problem_id ? feedback : null;
@@ -57,10 +66,15 @@ export default function ProblemCard({
       {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
       <div className="manipulative-canvas">
         {showBundlingSticks && (
-          <BundlingSticks problem={problem} feedback={feedbackForThisProblem} mastery={mastery} />
+          <BundlingSticks
+            problem={problem}
+            feedback={feedbackForThisProblem}
+            mastery={mastery}
+            onInteract={markManipulativeUsed}
+          />
         )}
-        {showTenFrame && <TenFrame problem={problem} mastery={mastery} />}
-        <NumberLine problem={problem} feedback={feedbackForThisProblem} />
+        {showTenFrame && <TenFrame problem={problem} mastery={mastery} onInteract={markManipulativeUsed} />}
+        <NumberLine problem={problem} feedback={feedbackForThisProblem} onInteract={markManipulativeUsed} />
       </div>
       <div className="problem-question">{problem.question}</div>
       {feedbackForThisProblem && (

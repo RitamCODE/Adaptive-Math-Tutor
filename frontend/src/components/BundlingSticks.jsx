@@ -89,7 +89,7 @@ function computeInvite(columns, removeTarget, removed) {
   return null;
 }
 
-export default function BundlingSticks({ problem, feedback, mastery }) {
+export default function BundlingSticks({ problem, feedback, mastery, onInteract }) {
   const parsed = parseQuestion(problem.question);
 
   const isForcedDiagnostic =
@@ -214,6 +214,7 @@ export default function BundlingSticks({ problem, feedback, mastery }) {
 
   function handleTokenPointerDown(e, tokenInfo) {
     if (animating) return;
+    onInteract?.();
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ ...tokenInfo, pointerId: e.pointerId });
     moveGhost(e.clientX, e.clientY);

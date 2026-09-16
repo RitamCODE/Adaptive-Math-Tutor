@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from backend.api import _SESSIONS, app
+from backend.api import _NARRATIVE_CONTEXT, _SESSIONS, app
 from backend.logging import events
 
 client = TestClient(app)
@@ -89,6 +89,70 @@ def test_narrative_endpoint_populates_reward_narrative_slot_after_correct_answer
     # and shaped correctly, not that it returns real text.
     body = response.json()
     assert set(body) == {"reward_narrative", "mastery_narrative", "boss_battle_narrative"}
+
+
+def test_reward_narrative_context_not_queued_on_ordinary_correct_answer():
+    # Touchpoint 3 ("effort-aware reward framing") must fire at the mastery
+    # moment only, not per problem (CLAUDE.md). Under the real BKT constants a
+    # correct answer almost always crosses the 0.8 mastery threshold outright
+    # (p_init=0.3 jumps to ~0.9 on one correct answer), so to exercise the
+    # "still short of mastery" branch this pins the in-memory session mastery
+    # well below the ~0.153 pre-answer level that would cross 0.8, then
+    # submits a correct answer and confirms next_action stays "new_problem".
+    start = client.post("/sessions", json={"student_id": "reward-gate-1"})
+    session_id = start.json()["session_id"]
+    problem = _SESSIONS[session_id].current_problem
+    correct_answer = problem.correct_answer
+    _SESSIONS[session_id] = _SESSIONS[session_id].model_copy(
+        update={"skill_mastery": {problem.skill_tag: 0.05}}
+    )
+
+    response = client.post(
+        f"/sessions/{session_id}/answer",
+        json={"answer": correct_answer, "time_taken_sec": 3.0},
+    )
+    assert response.json()["next_action"] == "new_problem"
+    assert response.json()["skill_mastery"][problem.skill_tag] < 0.8
+    assert "reward" not in _NARRATIVE_CONTEXT[session_id]
+
+
+def test_reward_narrative_context_queued_on_advance_skill():
+    # A fresh session's very first correct answer masters that skill outright
+    # under the real BKT constants (see above) and, since only one of the
+    # four skills is mastered so far, routes to "advance_skill" rather than
+    # "end_session" (which only fires once 2 skills are mastered).
+    start = client.post("/sessions", json={"student_id": "reward-gate-2"})
+    session_id = start.json()["session_id"]
+    correct_answer = _SESSIONS[session_id].current_problem.correct_answer
+
+    response = client.post(
+        f"/sessions/{session_id}/answer",
+        json={"answer": correct_answer, "time_taken_sec": 3.0},
+    )
+    assert response.json()["next_action"] == "advance_skill"
+    assert "reward" in _NARRATIVE_CONTEXT[session_id]
+
+
+def test_prior_avg_time_sec_excludes_the_current_attempt():
+    start = client.post("/sessions", json={"student_id": "prior-avg-1"})
+    session_id = start.json()["session_id"]
+    correct_answer = _SESSIONS[session_id].current_problem.correct_answer
+    wrong_answer = correct_answer + 1
+
+    first = client.post(
+        f"/sessions/{session_id}/answer",
+        json={"answer": wrong_answer, "time_taken_sec": 4.0},
+    )
+    # No prior attempts on this skill yet this session - nothing to compare to.
+    assert first.json()["feedback"]["prior_avg_time_sec"] is None
+
+    second = client.post(
+        f"/sessions/{session_id}/answer",
+        json={"answer": correct_answer, "time_taken_sec": 2.0},
+    )
+    # The one prior attempt (the wrong one above) averaged 4.0s - the current
+    # 2.0s submission must not be folded into that average.
+    assert second.json()["feedback"]["prior_avg_time_sec"] == 4.0
 
 
 def test_unknown_session_returns_404():
