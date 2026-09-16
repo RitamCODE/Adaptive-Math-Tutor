@@ -88,7 +88,9 @@ Inside the graph:
 - **`LastResponse`** — `answer`, `correct`, `time_taken_sec`. `correct` is provisional when a caller submits a new answer (see above) — never trust it downstream of grading.
 - **`Misconception`** — `skill`, `bug_type`, `timestamp`; appended to `SessionState.misconception_log` when an answer is wrong and a specific bug rule matched (excluded for `unclassified`, per `grade_and_diagnose_node` in `graph.py`).
 - **`EngagementState`** — `streak`, `xp`, `frustration_signal`, `consecutive_wrong` (signal-bearing wrong answers in a row; drives the 4-in-a-row fatigue stop).
-- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `last_diagnosis` (the `DiagnosisResult` `grade_and_diagnose_node` just produced, `None` before any signal-bearing answer this turn), `remediation` (the `Remediation` `build_remediation_node` just produced, `None` on a correct answer or before grading), `engagement`, `problems_completed`, `quest_length` (default 10), `next_action`.
+- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `last_diagnosis` (the `DiagnosisResult` `grade_and_diagnose_node` just produced, `None` before any signal-bearing answer this turn), `remediation` (the `Remediation` `build_remediation_node` just produced, `None` on a correct answer or before grading), `engagement`, `problems_completed`, `quest_length` (default 10), `pending_resurface`/`resurface_progress`/`resurfaced_skills` (skill resurfacing bookkeeping — see below), `next_action`.
+
+`pending_resurface` (the skill a demotion just moved the student off of), `resurface_progress` (correct answers on the prerequisite since that demotion), and `resurfaced_skills` (skills that already used their one resurface chance) implement skill resurfacing (revision-plan §7.3): `demote_skill_node` sets `pending_resurface`, a `resurface_skill_node` brings that skill back once `resurface_progress` reaches 2 — deliberately bypassing the 0.8 mastery-threshold check, since the prerequisite being re-answered correctly twice is itself the signal — and a second attempt-3 failure on the resurfaced skill ends the quest rather than demoting again.
 - **`DiagnosisResult`** (also in `models/state.py`) — `correct`, `bug_type | None`, `hint`, `visual`, `attempts_remaining`, `reveal_answer`; what `grade_and_diagnose()` returns.
 - **`Remediation`** — `hint`, `visual`, `reveal_answer`; a subset of `DiagnosisResult` projected by `build_remediation()`, and wired into the graph as `build_remediation_node` (see "How a turn flows" above) — a seam for remediation-specific shaping (manipulative payload detail, worked-solution steps) to grow into later without touching the pure grading path.
 - **`BKTParams`** (`models/bkt.py`) — `p_init=0.3`, `p_transit=0.15`, `p_slip=0.1`, `p_guess=0.05`.
@@ -139,14 +141,19 @@ The only four LLM calls anywhere in this backend, all fail-open (`None` on a mis
 
 None of these run inside the graph — they're all invoked from `api.py`, *after* `graph.invoke()` returns, using per-session attempt/time tracking (`_ATTEMPTS`) that lives in the API layer, not in `SessionState` (the schema is frozen per `CLAUDE.md` and isn't extended just to carry LLM-input bookkeeping). Isolation is grep-verifiable: `git ls-files 'backend/*.py' | xargs grep -l openai` should only ever return this file.
 
+`narrative.py`'s `_client()` wraps the OpenAI client with `wrap_openai` (the LangSmith SDK helper that instruments a client so every completion call auto-emits a traced run) — necessary because all four touchpoints run from FastAPI background tasks and the `/narrative` endpoint, never inside `graph.app.invoke()`, so LangGraph's own auto-tracing alone would never see them. `flavor_word_problem` additionally enforces the 20-word/one-name/one-object/digits-not-words cap from `CLAUDE.md`'s copy limits in code: it validates the generated text against the cap and regenerates once with a "too long" nudge before falling back to `None` (the plain numeric problem) if it still overruns.
+
 ## HTTP API (`api.py`)
 
 | Endpoint | Method | Does |
 |---|---|---|
 | `/sessions` | POST | start a new session for a `student_id` |
 | `/sessions/{id}` | GET | resume an existing session |
+| `/sessions/seed/{name}` | POST | install one of the three fixed demo profiles (`new`/`struggling`/`fluent`) without playing through a real session — backs the `?seed=` URL param |
+| `/sessions/{id}/restore` | POST | reinstall a session's mastery/XP/misconceptions from the frontend's own cached (correct-answer-free) snapshot after the backend process restarts and loses its in-memory session store |
 | `/sessions/{id}/answer` | POST | grade an answer, advance the turn, return the next state |
 | `/sessions/{id}/narrative` | GET | fetch the four LLM touchpoints for the most recent answer, once they resolve |
+| `/misconceptions` | GET | serve the hint + visual catalog keyed by `bug_type` from `content/misconceptions.json` — used by the end-of-quest report to label repaired misconceptions by name |
 
 `submit_answer` makes zero LLM calls — that's the whole point of splitting `/narrative` out as its own endpoint (CLAUDE.md's <150ms submit-to-verdict budget). The frontend calls it right after rendering the instant verdict and merges the result in whenever it resolves; results are cached per `context_id` so a duplicate fetch (e.g. a retry attempt with no new mastery/reward event) doesn't re-call the LLM.
 

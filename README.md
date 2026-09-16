@@ -82,7 +82,9 @@ frontend/
     App.jsx                  the single state owner
     api.js                   fetch wrappers for the backend endpoints
     constants.js              skill/bug-type tags → display copy
-    components/               ProblemCard, NumberPad, FeedbackBanner, SkillTrailMap, StatsBar, Mascot, StudentIdForm
+    components/               ProblemCard, NumberPad, FeedbackBanner, SkillTrailMap, StatsBar, Mascot,
+                              StudentIdForm, SessionSummary, BundlingSticks, NumberLine, TenFrame
+  lib/                        arithmetic.js, praise.js, sound.js
 docs/
   revision-plan.md           the active revision plan (CLAUDE.md's own references to
                               `docs/PLAN.md` are stale — this is the real filename)
@@ -126,13 +128,15 @@ uv run pytest       # backend test suite
 - The four LLM touchpoints, fail-open, isolated to one file, traced to LangSmith when `LANGSMITH_*` env vars are set
 - Latency split: the verdict is a pure ~6-15ms round trip; narrative is fetched separately and never blocks it
 - Vite + React frontend end to end: number pad, skill trail map, growth-stage mascot, responsive mobile/tablet/laptop layout
+- Three manipulatives (bundling sticks, number line, ten-frame), CRA-fading their visibility off live BKT mastery, pre-loaded with the student's own wrong answer on attempt 2
+- A real end-of-quest report (skills mastered, misconceptions repaired by name, problems solved, elapsed time, "Play again") and three synthesized sound effects
+- Seeded demo profiles (`?seed=new|struggling|fluent`) and refresh-mid-session/backend-restart recovery via `localStorage`
+- Skill resurfacing: a demoted skill returns once after two correct answers on its prerequisite, per `docs/revision-plan.md` §7.3
 
 **Not yet built** (see `docs/revision-plan.md` Parts 4-7 and the open items in `docs/CHECKLIST.md`):
-- Manipulatives — drag-and-drop base-10 blocks, the piece the plan calls the actual demo-winner; the `visual` payload is populated end to end but nothing renders it yet
 - The worked-solution animation on the third failed attempt
-- A real end-of-quest report naming specific misconceptions repaired (currently a placeholder "Quest complete!" screen, no replay button)
-- Seeded demo profiles (`?seed=new|struggling|fluent`) and refresh-mid-session recovery
-- Session *state* persistence beyond the process lifetime — the new event log is durable SQLite, but `SessionState` itself still lives in an in-memory dict and is lost on backend restart
+- Session *state* persistence beyond the process lifetime — the new event log is durable SQLite, but `SessionState` itself still lives in an in-memory dict and is lost on backend restart (the `/restore` endpoint reinstalls mastery/XP/misconceptions from the browser's own cache, but a fresh problem is generated rather than the exact in-flight one)
+- The demo video walkthrough (revision-plan Part 8, Day 7)
 
 ## Further reading
 

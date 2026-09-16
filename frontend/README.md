@@ -28,18 +28,30 @@ uv run uvicorn backend.api:app --reload --port 8000
 src/
   main.jsx              mounts <App /> into #root
   App.jsx                the single state owner — see "How it fits together" below
-  api.js                  fetch wrappers for the four backend endpoints
+  api.js                  fetch wrappers for the backend endpoints
   constants.js            skill display names (presentation only — misconception hint
                            text now comes pre-rendered from the backend, see below)
   App.css                 all styling; no CSS framework
+  index.css                base HTML/body reset loaded once in main.jsx
   components/
     StudentIdForm.jsx      start-session form
-    ProblemCard.jsx         current problem + flavor text + feedback + NumberPad
+    ProblemCard.jsx         current problem + flavor text + feedback + NumberPad + manipulative canvas
     NumberPad.jsx           on-screen digit/backspace/submit pad — no <input type="number"> anywhere
     FeedbackBanner.jsx      correct/incorrect feedback + misconception hint + narrative copy
     SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes
     StatsBar.jsx            XP, streak, frustration note
-    Mascot.jsx              growth-stage companion that reacts to answers
+    Mascot.jsx              growth-stage companion that reacts to answers (idle/thinking/correct/incorrect)
+    BundlingSticks.jsx      base-10-blocks manipulative for addition-with-carrying and subtraction-with-borrowing
+    NumberLine.jsx          manipulative for the four number_line/* misconceptions (off-by-one, operator
+                             misread, reversed operands, digit reversal)
+    TenFrame.jsx            low-mastery scaffold for addition_no_carry (which has no bug rules of its own)
+    SessionSummary.jsx      end-of-quest report — skills mastered, misconceptions repaired, "Play again"
+  lib/
+    arithmetic.js           parses `question` strings into place-value blocks for the manipulatives
+    praise.js                the deterministic four-branch per-problem praise lookup (speed/named-skill/
+                             effort/strategy) CLAUDE.md's copy-limits section requires — not an LLM call
+    sound.js                 three Web Audio API synthesized sound effects (correct, bundle-into-ten,
+                             quest complete) — no binary audio assets or libraries
 ```
 
 ## How it fits together
@@ -55,7 +67,7 @@ src/
 - `resuming` — true only during the initial mount's `getSession` resume check, so nothing renders as "start a new session" for a frame before that resolves
 - `problemStartRef` — a timestamp ref reset whenever the current problem's `problem_id` changes, used to measure `time_taken_sec`
 
-`api.js` is the only module that calls the backend. Its four functions (`startSession`, `getSession`, `submitAnswer`, `getNarrative`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
+`api.js` is the only module that calls the backend. Its seven functions (`startSession`, `seedSession`, `restoreSession`, `getSession`, `submitAnswer`, `getNarrative`, `getMisconceptionCatalog`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
 
 `constants.js` exists because the backend deliberately sends the raw `skill_tag` rather than display text — `SKILL_DISPLAY_NAMES` is what `SkillTrailMap` uses to render a skill's name instead of its tag. Misconception copy is different: `Feedback.hint` already arrives from the backend as finished, display-ready text (backed by `content/misconceptions.json` on the backend side), so `FeedbackBanner` renders it directly — there's no client-side hint lookup to keep in sync when a new bug rule is added.
 
@@ -71,6 +83,10 @@ A student types on `NumberPad` (digits, backspace, submit — no `<input type="n
 - fires `getNarrative(sessionId)` fire-and-forget, off the response that already rendered — when it resolves, its fields are merged into `feedback` (guarded on `problem_id` still matching, so a narrative that resolves after the student has already moved to a new problem doesn't get attached to the wrong one)
 
 Because a wrong answer on attempt 1 or 2 keeps the *same* `problem_id` (the retry ladder — see `backend/README.md`), `problemStartRef` intentionally does not reset in that case, and `FeedbackBanner` re-renders inside the same `ProblemCard` rather than a new one.
+
+### Manipulatives and the end of a quest
+
+`ProblemCard` renders one of the three manipulatives (`BundlingSticks`, `NumberLine`, `TenFrame` — see the file structure above) as the hero surface above the equation, chosen by skill tag and gated on the current skill's live BKT mastery (the fading bands from `CLAUDE.md`: open below 0.4, collapsed-but-one-tap-open between 0.4 and 0.7, abstract-only and available-on-request above 0.7) — a wrong answer on attempt 2 force-opens the relevant one regardless of band, pre-seeded from the student's own wrong answer via `lib/arithmetic.js`. `lib/sound.js` fires alongside correct answers, a manipulative bundling into a ten, and quest completion. When `next_action === "end_session"`, `App` renders `SessionSummary` instead of `ProblemCard` — skills mastered, misconceptions repaired (labeled via `getMisconceptionCatalog`), problems solved, elapsed time, and a "Play again" button that clears the cached session.
 
 ## Backend contract
 

@@ -1,6 +1,6 @@
 # Verification checklist
 
-Run this as a manual pass. Every item is a thing you can observe in the browser, not a thing you can assume from the code. Companion to `docs/PLAN.md`.
+Run this as a manual pass. Every item is a thing you can observe in the browser, not a thing you can assume from the code. Companion to `docs/revision-plan.md`.
 
 ### A. Feedback is bound to its problem — ready to test (2026-09-12)
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-16 — Documentation audit
+
+Checked every README/`CLAUDE.md`/`docs/*.md` against the actual code. Found and fixed five
+stale living-reference docs: `README.md`'s "Not yet built" list still claimed manipulatives,
+the end-of-quest report, and seeded demo profiles were missing (all three shipped 2026-09-14/15);
+`backend/README.md`'s endpoint table and `SessionState` field list were missing the seed/restore/
+misconceptions endpoints and the skill-resurfacing fields; `frontend/README.md`'s file tree was
+missing the three manipulative components and `lib/`; `docs/CHECKLIST.md` still referenced the
+renamed `docs/PLAN.md`; `CLAUDE.md`'s `SessionState` schema was missing the resurfacing fields.
+Added `docs/DOCS_AUDIT.md` to track doc currency going forward. `UI_DESIGN.md` and
+`docs/revision-plan.md` are left as-is — both are frozen historical planning docs, not living
+references.
+
 ## 2026-09-15 — Deterministic per-problem praise, touchpoint 3 gating, feedback display timing
 
 Closed a spec gap flagged during review: `FeedbackBanner.jsx` was rendering the touchpoint-3
