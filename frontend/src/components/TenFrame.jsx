@@ -11,25 +11,21 @@ function Dot() {
   );
 }
 
-function bandFromMastery(mastery) {
-  if (mastery < 0.4) return "open";
-  if (mastery <= 0.7) return "collapsed";
-  return "hidden";
-}
-
 /**
- * A single 10-cell ten-frame, shown as a low-mastery scaffold for
- * `addition_no_carry` (see revision-plan Part 4.1) rather than triggered by
- * any specific misconception — that skill has no bug rules, and its "easy"
- * bucket only ever generates single-digit a+b<=9, which is exactly what one
- * frame can show.
+ * A single 10-cell ten-frame for `addition_no_carry`, whose "easy" bucket
+ * only ever generates single-digit a+b<=9 — exactly what one frame can show.
+ *
+ * That skill has no bug rules, so no diagnosis ever names a visual for it and
+ * nothing can auto-open this frame. It is available on request at any time,
+ * and closed until asked for: a manipulative is help a student reaches for or
+ * earns with a mistake, never the default surface.
  */
-export default function TenFrame({ problem, mastery, onInteract }) {
+export default function TenFrame({ problem, onInteract }) {
   const parsed = parseQuestion(problem.question);
-  const band = bandFromMastery(mastery ?? 0);
   const resetKey = problem.problem_id;
 
-  const [expanded, setExpanded] = useState(band === "open");
+  // Closed until the student asks; mastery alone never opens it.
+  const [expanded, setExpanded] = useState(false);
   const [filled, setFilled] = useState(0);
   const [drag, setDrag] = useState(null);
 
@@ -39,7 +35,7 @@ export default function TenFrame({ problem, mastery, onInteract }) {
   useEffect(() => {
     setFilled(0);
     setDrag(null);
-    setExpanded(band === "open");
+    setExpanded(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetKey]);
 
@@ -49,7 +45,6 @@ export default function TenFrame({ problem, mastery, onInteract }) {
 
   const { a, b } = parsed;
   const remaining = b - filled;
-  const showToggle = band !== "open";
 
   function moveGhost(x, y) {
     if (ghostRef.current) {
@@ -89,11 +84,9 @@ export default function TenFrame({ problem, mastery, onInteract }) {
     <div className="ten-frame">
       <div className="ten-frame-header">
         <span>🔟 Ten frame</span>
-        {showToggle && (
-          <button type="button" className="ten-frame-toggle" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Hide frame" : "Show frame"}
-          </button>
-        )}
+        <button type="button" className="ten-frame-toggle" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Hide frame" : "Show frame"}
+        </button>
       </div>
 
       {expanded && (

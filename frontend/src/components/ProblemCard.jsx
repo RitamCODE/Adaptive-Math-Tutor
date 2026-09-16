@@ -64,6 +64,10 @@ export default function ProblemCard({
         </div>
       )}
       {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
+      {/* The equation is pinned above the manipulative area and sticks to the
+          top of the card, so the numerals never need scrolling to during a
+          problem — however tall the blocks grow underneath them. */}
+      <div className="problem-question">{problem.question}</div>
       <div className="manipulative-canvas">
         {showBundlingSticks && (
           <BundlingSticks
@@ -73,10 +77,14 @@ export default function ProblemCard({
             onInteract={markManipulativeUsed}
           />
         )}
-        {showTenFrame && <TenFrame problem={problem} mastery={mastery} onInteract={markManipulativeUsed} />}
-        <NumberLine problem={problem} feedback={feedbackForThisProblem} onInteract={markManipulativeUsed} />
+        {showTenFrame && <TenFrame problem={problem} onInteract={markManipulativeUsed} />}
+        <NumberLine
+          problem={problem}
+          feedback={feedbackForThisProblem}
+          mastery={mastery}
+          onInteract={markManipulativeUsed}
+        />
       </div>
-      <div className="problem-question">{problem.question}</div>
       {feedbackForThisProblem && (
         <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} />
       )}

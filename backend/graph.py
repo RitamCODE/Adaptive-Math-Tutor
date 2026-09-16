@@ -18,9 +18,13 @@ Topology (see CLAUDE.md's routing spec):
                                                 correct or wrong, so consecutive_wrong tracks
                                                 the fatigue stop regardless of outcome)
 
-    "decide_engagement" --[route_after_engagement]--> "end_session"      (fatigue stop, or
-                                                                          quest/mastery limits)
-    "decide_engagement" --[route_after_engagement]--> "advance_skill"    (correct, mastery >= threshold)
+    "decide_engagement" --[route_after_engagement]--> "end_session"      (fatigue stop, quest
+                                                                          length, or both parent
+                                                                          skills mastered)
+    "decide_engagement" --[route_after_engagement]--> "advance_skill"    (correct, skill mastered:
+                                                                          at or above threshold
+                                                                          after each of the last
+                                                                          3 signal-bearing answers)
     "decide_engagement" --[route_after_engagement]--> "new_problem"      (correct, otherwise, including
                                                                           progress toward a pending resurface)
     "decide_engagement" --[route_after_engagement]--> "resurface_skill"  (correct, 2nd correct answer on
@@ -45,7 +49,12 @@ from datetime import datetime, timezone
 
 from langgraph.graph import END, START, StateGraph
 
-from backend.models.bkt import BKTParams, MASTERY_THRESHOLD, update_mastery as bkt_update_mastery
+from backend.models.bkt import (
+    BKTParams,
+    MASTERY_THRESHOLD,
+    is_mastered,
+    update_mastery as bkt_update_mastery,
+)
 from backend.models.state import LastResponse, Misconception, SessionState
 from backend.nodes.curriculum import select_next_skill
 from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnose
@@ -75,7 +84,7 @@ def generate_problem_node(state: SessionState) -> dict:
     skill = (
         state.current_problem.skill_tag
         if state.current_problem is not None
-        else select_next_skill(state.skill_mastery, DEFAULT_SKILL_GRAPH)
+        else select_next_skill(state, DEFAULT_SKILL_GRAPH)
     )
     problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
     return {
@@ -147,9 +156,24 @@ def update_mastery_node(state: SessionState) -> dict:
     updates: dict = {}
     if not (state.attempt_history and state.attempt_history[-1][1] == "digit_reversal"):
         skill = state.current_problem.skill_tag
-        updates["skill_mastery"] = bkt_update_mastery(
+        updated_mastery = bkt_update_mastery(
             state.skill_mastery, skill, state.last_response.correct, BKTParams()
         )
+        updates["skill_mastery"] = updated_mastery
+
+        # The sustained-mastery run: how many consecutive signal-bearing
+        # answers on this skill have left it at or above the threshold. Any
+        # answer that drops it back below resets the run to zero. Only
+        # signal-bearing answers reach this node at all (blank and
+        # rapid-guess submissions are routed to hold_non_signal), and the
+        # digit_reversal branch above skips the run for the same reason it
+        # skips the BKT update: the underlying skill is intact, so that
+        # answer neither penalizes nor rewards mastery.
+        run = state.mastery_run.get(skill, 0)
+        updates["mastery_run"] = {
+            **state.mastery_run,
+            skill: run + 1 if updated_mastery[skill] >= MASTERY_THRESHOLD else 0,
+        }
 
     if (
         state.pending_resurface is not None
@@ -175,7 +199,7 @@ def advance_skill_node(state: SessionState) -> dict:
     pure functions are called back-to-back here — they remain independent,
     separately unit-tested pure functions; only the *wiring* combines them.
     """
-    new_skill = select_next_skill(state.skill_mastery, DEFAULT_SKILL_GRAPH)
+    new_skill = select_next_skill(state, DEFAULT_SKILL_GRAPH)
     problem = pure_generate_problem(new_skill, _difficulty_for(state.skill_mastery, new_skill))
     return {
         "current_problem": problem, "next_action": "advance_skill", "last_response": None,
@@ -282,9 +306,15 @@ def route_after_engagement(state: SessionState) -> str:
     if not correct and state.attempt_number < 3:
         return "retry_problem"
 
+    # The quest ends when the curriculum is genuinely finished — every
+    # sub-skill of both parent skills past the sustained-mastery gate — or
+    # when the session runs out of problems. (The fatigue stop above is the
+    # third ending.) This deliberately replaces an older "any 2 skills
+    # mastered" count, which, because the DAG unlocks strictly in order,
+    # was in practice a synonym for "both addition sub-skills done" and made
+    # subtraction unreachable by play.
     next_completed = state.problems_completed + 1
-    mastered_count = sum(1 for m in state.skill_mastery.values() if m >= MASTERY_THRESHOLD)
-    if next_completed >= state.quest_length or mastered_count >= 2:
+    if next_completed >= state.quest_length or DEFAULT_SKILL_GRAPH.all_groups_mastered(state):
         return "end_session"
 
     if correct:
@@ -297,7 +327,7 @@ def route_after_engagement(state: SessionState) -> str:
             # now-demoted skill in the first place), which would otherwise
             # resurface after just one correct answer via "advance_skill".
             return "resurface_skill" if state.resurface_progress >= 2 else "new_problem"
-        return "advance_skill" if state.skill_mastery.get(skill, 0.0) >= MASTERY_THRESHOLD else "new_problem"
+        return "advance_skill" if is_mastered(skill, state) else "new_problem"
 
     if state.current_problem.skill_tag in state.resurfaced_skills:
         # Already used its one resurface chance and failed again: end the

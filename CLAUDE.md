@@ -72,8 +72,10 @@ adaptive-math-tutor/
       test_bug_rules.py
       test_curriculum.py
       test_retry_ladder.py [new]
+      test_mastery_gate.py [new]
   frontend/
     (problem display, number pad, manipulative canvas, skill map, XP/streak)
+    src/lib/remediation.js   # bandFromMastery(): which remediation a wrong answer earns
   docs/
     revision-plan.md
     CHECKLIST.md
@@ -139,7 +141,9 @@ class SessionState(BaseModel):
                                                # answer, since there's nothing to remediate
     engagement: EngagementState
     problems_completed: int
-    quest_length: int                        # default 10
+    mastery_run: dict[str, int]              # per skill: consecutive signal-bearing answers
+                                             # that left its mastery at or above 0.8
+    quest_length: int                        # default 16
     pending_resurface: str | None            # skill demoted FROM, awaiting resurface (revision-plan 7.3)
     resurface_progress: int                  # correct answers on the prerequisite since that demotion
     resurfaced_skills: list[str]              # skills that already used their one resurface chance
@@ -176,9 +180,34 @@ else:
 P(L_next) = P(L | evidence) + (1 - P(L | evidence)) * p_transit
 ```
 
-Default parameters live in `BKTParams` above. New skills start at `p_init = 0.3`. Mastery threshold for "skill mastered" is **0.8**, the value the curriculum node checks before routing to `advance_skill`.
+Default parameters live in `BKTParams` above. New skills start at `p_init = 0.3`. Mastery threshold for "skill mastered" is **0.8**.
 
-**Distinct from the mastery threshold**, the manipulative fading bands are 0.4 and 0.7. Do not unify these numbers. 0.8 governs progression; 0.4 and 0.7 govern how much visual scaffolding is shown.
+### Mastery must be sustained, not merely crossed
+
+With the parameters above a single correct answer lifts a fresh skill from 0.30 to **0.9025**, past the threshold. So crossing 0.8 once is not mastery. A skill counts as mastered only when it has been at or above 0.8 after each of the last **3** consecutive signal-bearing answers on it (`MASTERY_MIN_RUN` in `bkt.py`). Any answer that drops it below 0.8 resets that run to zero. The run lives in `SessionState.mastery_run`, maintained by `update_mastery_node`.
+
+Two answers deliberately leave the run untouched rather than resetting it: a **non-signal** submission (blank or rapid guess), which never reaches the mastery node at all, and a **`digit_reversal`** answer, which already skips the BKT update because the underlying skill is intact — so it is neither penalized nor rewarded.
+
+This is expressed as exactly one helper, and every "is this mastered" question in the codebase goes through it — routing, `select_next_skill`, `SkillGraph.is_unlocked`, and the `mastered` flag the API sends the UI — so the engine and the interface can never disagree:
+
+```python
+def is_mastered(skill: str, state: SessionState) -> bool: ...
+```
+
+Note the gate is sticky in one direction: from a saturated skill it takes four consecutive wrong answers to fall back under 0.8, and the fatigue stop ends the session at exactly four. A genuinely mastered skill is not un-mastered mid-session.
+
+**Distinct from the mastery threshold**, the remediation bands are 0.4 and 0.7. Do not unify these numbers. 0.8 governs progression; 0.4 and 0.7 govern **what kind of remediation a wrong answer earns**, not what is visible by default — no manipulative is shown before an error at any mastery level. See "Manipulatives are remediation" below.
+
+### Skill groups
+
+The four skills are two **parent skills** of two sub-skills each, declared in `skill_graph.py` alongside the prerequisite DAG:
+
+| Parent | Sub-skills |
+|---|---|
+| Addition | `addition_no_carry`, `addition_carry` |
+| Subtraction | `subtraction_no_borrow`, `subtraction_borrow` |
+
+Each sub-skill keeps its own independent BKT mastery value and its own 0.8 threshold, unchanged. A parent skill is mastered only when **every** one of its sub-skills is. Grouping changes how mastery is aggregated and reported — the quest-end condition, the quest map's headings, the end-of-quest report — and never the traversal order: `select_next_skill` walks the same DAG in the same sequence it always did.
 
 ### Misconception bug rules
 
@@ -208,7 +237,7 @@ Each skill module exports a list of `(bug_type: str, detector: Callable[[Problem
 ## Node specifications
 
 ```python
-def select_next_skill(mastery: dict[str, float], skill_graph: SkillGraph) -> str: ...
+def select_next_skill(state: SessionState, skill_graph: SkillGraph) -> str: ...  # needs mastery_run, not just mastery
 def generate_problem(skill: str, difficulty: float) -> Problem: ...
 def grade_and_diagnose(problem: Problem, answer: int | None, attempt: int) -> DiagnosisResult: ...
 def build_remediation(diagnosis: DiagnosisResult, attempt: int) -> Remediation: ...
@@ -222,18 +251,20 @@ A wrong answer keeps the **same problem** on screen. It does not generate a new 
 
 ```
 correct                      -> decide_engagement
-  mastery >= 0.8             -> select_next_skill      (advance_skill)
+  is_mastered(skill, state)  -> select_next_skill      (advance_skill)
   otherwise                  -> generate_problem       (new_problem, same skill)
 
 incorrect, attempt 1         -> build_remediation      (retry_problem, hint only)
-incorrect, attempt 2         -> build_remediation      (retry_problem, manipulative pre-loaded
-                                                        with the student's wrong answer)
+incorrect, attempt 2         -> build_remediation      (retry_problem; what the hint comes
+                                                        with depends on the mastery band, see
+                                                        "Manipulatives are remediation")
 incorrect, attempt 3         -> worked solution, then select_next_skill on the
                                 prerequisite            (demote_skill)
 
 non-signal submission        -> retry_problem, attempt counter unchanged, no BKT update
 
-problems_completed >= quest_length, or 2 skills mastered,
+both parent skills mastered (all four sub-skills past the gate),
+or problems_completed >= quest_length,
 or 4 consecutive wrong       -> end_session
 ```
 
@@ -242,6 +273,35 @@ or 4 consecutive wrong       -> end_session
 A skill demoted at attempt 3 is re-surfaced once, after two correct answers on its prerequisite. If it fails again, end the quest on the lower-level success rather than grinding.
 
 ## Frontend requirements
+
+### Manipulatives are remediation, not default furniture
+
+A manipulative — the base-ten blocks, the ten frame, the number line — is help a student gets **after** an error or asks for deliberately. It is never the surface they meet a problem on.
+
+- **No manipulative is ever shown on attempt 1 of any problem, at any mastery level.** There is no low-mastery auto-open. (A fresh student sits at `p_init = 0.3`, so an "open below 0.4" rule meant blocks on problem 1, before any mistake.)
+- On a wrong, **signal-bearing** answer, the mastery band decides what the remediation delivers. The fading is in how much scaffolding the error earns:
+
+| Mastery | What attempt 2 delivers |
+|---|---|
+| below 0.4 | the hint, and the manipulative opens pre-loaded with the student's own wrong answer |
+| 0.4 to 0.7 | the hint, with the manipulative highlighted and one tap away, still closed |
+| above 0.7 | the hint alone; nothing opens |
+
+- An explicit **opt-in control** ("Show blocks" / "Show frame") is available at all times, at every mastery level and on every attempt, and is **closed by default**. A student who wants the scaffold can always request it.
+- The band function is `bandFromMastery` in `frontend/src/lib/remediation.js`, shared by the manipulatives rather than copied into each.
+- The number line is the exception to "available at all times": it is the remediation for four specific misconceptions rather than a general scaffold, so it appears only inside its own remediation window, and then only as much as the band allows.
+
+### The equation is always visible
+
+The equation is pinned above the manipulative area and sticks to the top of the problem card, so the numerals never require scrolling to during a problem, however tall the manipulative grows beneath them. It keeps full prominence whether or not a manipulative is present.
+
+### A manipulative never resolves the answer for the student
+
+The base-ten blocks show the assembled place values ("Tens · 9", "Ones · 7") and the bundling animation — ten ones snapping into a ten is the pedagogically valuable part and stays. They do **not** display a running numeric total: a readout that tallies to a finished number while the student drags turns the number pad into copying rather than computing. The student reads the place values and enters the number themselves.
+
+The number line is the deliberate exception. Its rail carries no tick labels, so its position readout is the only number on the widget, and landing on a position is what a number line *is*.
+
+### Input, feedback, and layout
 
 - **No `<input type="number">` anywhere.** On-screen number pad only: digits, backspace, submit. A student must not be able to reach an answer without computing it, because a spun-to answer produces a correct grade with no misconception signal and inflates the mastery estimate.
 - Feedback carries `problem_id` and renders **inside the problem card it belongs to**, cleared when `problem_id` changes. No global banner.
@@ -287,7 +347,7 @@ Remaining work, per `docs/revision-plan.md`:
 
 - [ ] **Retry ladder and session termination** (Plan Part 1). *Acceptance: a wrong answer keeps the same problem on screen, never reveals the answer on attempt 1 or 2, and a full quest reaches a terminal summary screen.*
 - [ ] **Misconception catalog** (Plan Parts 2 and 3). *Acceptance: every bug_type above fires on a known wrong answer in a unit test, and `86 + 94 -> 1017` returns `add_concat_no_carry`.*
-- [ ] **Manipulatives** (Plan Part 4). *Acceptance: `86 + 94` is solvable end to end by dragging, on touch, and the fading bands change behavior between the `new` and `fluent` seeds.*
+- [ ] **Manipulatives** (Plan Part 4). *Acceptance: `86 + 94` is solvable end to end by dragging, on touch; no manipulative appears on any attempt 1; and the bands change what a wrong answer delivers between the `new` and `fluent` seeds.*
 - [ ] **UI shell** (Plan Part 6). *Acceptance: number pad, quest map, mascot, end-of-quest report, full session playable at 1024 x 768.*
 - [ ] **Demo readiness** (Plan Part 7). *Acceptance: all three seeds load from a URL, refresh mid-session recovers, LangSmith shows traces for all four touchpoints.*
 - [ ] **Demo polish**: record the 2-3 minute walkthrough per the demo script in `docs/revision-plan.md`.

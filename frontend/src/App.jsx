@@ -260,7 +260,10 @@ export default function App() {
               reaction={reaction}
               frustration={displayData.engagement.frustration_signal}
             />
-            <SkillTrailMap skillProgress={displayData.skill_progress} />
+            <SkillTrailMap
+              skillProgress={displayData.skill_progress}
+              groupProgress={displayData.group_progress}
+            />
           </div>
           <div className="main-panel">
             {questComplete ? (

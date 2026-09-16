@@ -31,10 +31,10 @@ from pydantic import BaseModel
 from backend.graph import _difficulty_for, app as graph_app
 from backend.llm import narrative
 from backend.logging import events
-from backend.models.bkt import MASTERY_THRESHOLD
+from backend.models.bkt import is_mastered
 from backend.models.state import EngagementState, LastResponse, Misconception, Problem, SessionState
 from backend.nodes.problem_gen import generate_problem
-from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
+from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH, GROUP_DISPLAY_NAMES
 
 app = FastAPI(title="Adaptive Math Tutor API")
 app.add_middleware(
@@ -74,8 +74,10 @@ class RestoreRequest(BaseModel):
     problems_completed: int
     quest_length: int
     active_skill: str
-    # Revision-plan 7.3 resurface bookkeeping — defaulted so a snapshot cached
-    # before this field existed still restores cleanly.
+    # Sustained-mastery runs, and the revision-plan 7.3 resurface bookkeeping —
+    # all defaulted so a snapshot cached before these fields existed still
+    # restores cleanly.
+    mastery_run: dict[str, int] = {}
     pending_resurface: str | None = None
     resurface_progress: int = 0
     resurfaced_skills: list[str] = []
@@ -99,6 +101,18 @@ class SkillProgress(BaseModel):
     mastery: float
     unlocked: bool
     mastered: bool
+    group: str | None  # the parent skill this sub-skill belongs to
+
+
+class GroupProgress(BaseModel):
+    """A parent skill: mastered only when all of its sub-skills are."""
+
+    group: str
+    display_name: str
+    skills: list[str]
+    mastered_count: int
+    total: int
+    mastered: bool
 
 
 class SessionResponse(BaseModel):
@@ -107,12 +121,14 @@ class SessionResponse(BaseModel):
     current_problem: ProblemOut | None
     engagement: EngagementState
     skill_progress: list[SkillProgress]
+    group_progress: list[GroupProgress]
     next_action: str
     # Everything below is safe to expose (no correct_answer anywhere in it) and
     # exists so the frontend can cache a genuinely complete session snapshot in
     # localStorage, for both plain rehydration and restart recovery (see
     # /sessions/{id}/restore).
     skill_mastery: dict[str, float]
+    mastery_run: dict[str, int]
     misconception_log: list[Misconception]
     problems_completed: int
     quest_length: int
@@ -150,16 +166,41 @@ class MisconceptionCatalogEntry(BaseModel):
     visual: str
 
 
-def _skill_progress(mastery: dict[str, float]) -> list[SkillProgress]:
+def _skill_progress(state: SessionState) -> list[SkillProgress]:
+    """Per-sub-skill progress for the trail map.
+
+    `mastered` goes through `is_mastered`, the same sustained-mastery gate
+    the router uses, so the UI can never show a skill as mastered that the
+    engine would still route more problems for.
+    """
     return [
         SkillProgress(
             skill=skill,
-            mastery=mastery.get(skill, 0.0),
-            unlocked=DEFAULT_SKILL_GRAPH.is_unlocked(skill, mastery, MASTERY_THRESHOLD),
-            mastered=mastery.get(skill, 0.0) >= MASTERY_THRESHOLD,
+            mastery=state.skill_mastery.get(skill, 0.0),
+            unlocked=DEFAULT_SKILL_GRAPH.is_unlocked(skill, state),
+            mastered=is_mastered(skill, state),
+            group=DEFAULT_SKILL_GRAPH.group_of(skill),
         )
         for skill in DEFAULT_SKILL_GRAPH.topological_order()
     ]
+
+
+def _group_progress(state: SessionState) -> list[GroupProgress]:
+    """Per-parent-skill aggregate: Addition and Subtraction."""
+    groups = []
+    for group, skills in DEFAULT_SKILL_GRAPH.groups.items():
+        mastered = [skill for skill in skills if is_mastered(skill, state)]
+        groups.append(
+            GroupProgress(
+                group=group,
+                display_name=GROUP_DISPLAY_NAMES.get(group, group),
+                skills=list(skills),
+                mastered_count=len(mastered),
+                total=len(skills),
+                mastered=DEFAULT_SKILL_GRAPH.is_group_mastered(group, state),
+            )
+        )
+    return groups
 
 
 def _to_session_response(state: SessionState) -> SessionResponse:
@@ -169,7 +210,17 @@ def _to_session_response(state: SessionState) -> SessionResponse:
             question=state.current_problem.question,
             skill_tag=state.current_problem.skill_tag,
             difficulty=state.current_problem.difficulty,
-            flavor_text=_FLAVOR_TEXT.get(state.session_id),
+            # Only serve cached flavor text if it was generated for THIS
+            # problem_id. _refresh_flavor_text runs as a background task
+            # scheduled after this response is built, so right after a
+            # problem transition the cache still holds the previous
+            # problem's story — falls back to None (plain numeric problem)
+            # rather than showing a story with mismatched numbers.
+            flavor_text=(
+                _FLAVOR_TEXT.get(state.session_id)
+                if _FLAVOR_TEXT_PROBLEM_ID.get(state.session_id) == state.current_problem.problem_id
+                else None
+            ),
         )
         if state.current_problem is not None
         else None
@@ -179,9 +230,11 @@ def _to_session_response(state: SessionState) -> SessionResponse:
         student_id=state.student_id,
         current_problem=problem,
         engagement=state.engagement,
-        skill_progress=_skill_progress(state.skill_mastery),
+        skill_progress=_skill_progress(state),
+        group_progress=_group_progress(state),
         next_action=state.next_action,
         skill_mastery=state.skill_mastery,
+        mastery_run=state.mastery_run,
         misconception_log=state.misconception_log,
         problems_completed=state.problems_completed,
         quest_length=state.quest_length,
@@ -229,6 +282,7 @@ def _install_seeded_state(
     problems_completed: int,
     quest_length: int,
     active_skill: str,
+    mastery_run: dict[str, int] | None = None,
     pending_resurface: str | None = None,
     resurface_progress: int = 0,
     resurfaced_skills: list[str] | None = None,
@@ -255,6 +309,7 @@ def _install_seeded_state(
         last_diagnosis=None,
         remediation=None,
         engagement=engagement,
+        mastery_run=mastery_run if mastery_run is not None else {},
         problems_completed=problems_completed,
         quest_length=quest_length,
         next_action="new_problem",
@@ -274,17 +329,35 @@ _SEED_PROFILES: dict[str, dict] = {
         misconception_log=[
             Misconception(skill="addition_carry", bug_type="add_concat_no_carry", timestamp=datetime.now(timezone.utc))
         ],
-        engagement=EngagementState(streak=0, xp=10, frustration_signal=False, consecutive_wrong=1),
+        # consecutive_wrong starts at 0, not 1: the demo path for this seed is
+        # "fail the current problem 3 times to demote, then answer the
+        # prerequisite correctly twice to resurface" (revision-plan 7.3). A
+        # baked-in consecutive_wrong of 1 would put the fatigue stop
+        # (>= 4 consecutive wrong, checked before the attempt>=3 demote
+        # branch in route_after_engagement) one answer ahead of demotion,
+        # ending the session before resurfacing could ever be shown.
+        engagement=EngagementState(streak=0, xp=10, frustration_signal=False, consecutive_wrong=0),
+        # The prerequisite needs a full mastery run installed alongside its 0.9,
+        # or the sustained-mastery gate reads it as unmastered and the trail map
+        # shows addition_carry — the skill this seed actually lands on — locked.
+        mastery_run={"addition_no_carry": 3},
         problems_completed=3,
-        quest_length=10,
+        quest_length=16,
         active_skill="addition_carry",
     ),
     "fluent": dict(
         skill_mastery={"addition_no_carry": 1.0, "addition_carry": 0.85},
         misconception_log=[],
         engagement=EngagementState(streak=4, xp=120, frustration_signal=False, consecutive_wrong=0),
+        # addition_carry sits one answer short of its run, so this seed plays:
+        # the next correct answer completes it, finishes the Addition parent
+        # skill and unlocks subtraction, instead of the old behaviour where
+        # both addition skills already counted as mastered and the very first
+        # answer ended the quest. At 0.85 its remediation band is hint-only,
+        # which is the faded-scaffold state the demo wants to show.
+        mastery_run={"addition_no_carry": 3, "addition_carry": 2},
         problems_completed=6,
-        quest_length=10,
+        quest_length=16,
         active_skill="addition_carry",
     ),
 }
@@ -364,6 +437,7 @@ def restore_session(
         problems_completed=req.problems_completed,
         quest_length=req.quest_length,
         active_skill=req.active_skill,
+        mastery_run=req.mastery_run,
         pending_resurface=req.pending_resurface,
         resurface_progress=req.resurface_progress,
         resurfaced_skills=req.resurfaced_skills,
@@ -453,7 +527,19 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
 
     context_id = uuid4().hex
     narrative_context: dict = {}
-    if new_state.next_action == "advance_skill":
+    # Touchpoints 2 and 3 fire at the mastery moment. That is normally the
+    # `advance_skill` transition, but `route_after_engagement` checks the
+    # quest-end conditions *before* the advance branch, so the answer that
+    # masters the final skill — the finale, and the strongest moment in the
+    # session — exits as `end_session` and would otherwise be the one mastery
+    # moment that goes unnarrated. Treat a quest-ending answer that did in
+    # fact master its skill as a mastery moment too.
+    mastered_now = (
+        diagnosis.correct
+        and new_state.next_action == "end_session"
+        and is_mastered(problem.skill_tag, new_state)
+    )
+    if new_state.next_action == "advance_skill" or mastered_now:
         mastered_skill = problem.skill_tag
         narrative_context["reward"] = {
             "skill_tag": problem.skill_tag,

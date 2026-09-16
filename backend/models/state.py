@@ -69,8 +69,10 @@ class SessionState(BaseModel):
     last_diagnosis: DiagnosisResult | None = None  # set by grade_and_diagnose_node; feeds build_remediation_node
     remediation: Remediation | None = None  # set by build_remediation_node on a wrong signal-bearing answer
     engagement: EngagementState
+    mastery_run: dict[str, int] = {}  # per skill: consecutive signal-bearing answers
+                                      # that left its mastery at or above the threshold
     problems_completed: int = 0
-    quest_length: int = 10
+    quest_length: int = 16
     pending_resurface: str | None = None  # skill demoted FROM, awaiting resurface (revision-plan 7.3)
     resurface_progress: int = 0  # correct answers on the prerequisite since that demotion
     resurfaced_skills: list[str] = []  # skills that already used their one resurface chance

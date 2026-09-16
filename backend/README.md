@@ -59,7 +59,7 @@ Curriculum ──► Problem Gen ──► [student answers] ──► Diagnosis
                     │                         │                        │
                     │           ┌─────────────┼─────────────┐          │
                     │      attempt < 3    attempt >= 3   mastered      │
-                    │           │              │        (>= 0.8)       │
+                    │           │              │      (is_mastered)    │
                     │           ▼              ▼             │         │
                     └── retry_problem    demote_skill   Curriculum ────┘
                         (same problem)   (prerequisite)  (advance_skill)
@@ -77,8 +77,8 @@ Inside the graph:
    - 4 consecutive signal-bearing wrong answers anywhere → `end_session` (the fatigue stop, checked first, regardless of this turn's own outcome).
    - Wrong, with attempts remaining (`attempt_number < 3`) → `retry_problem_node`: same problem stays on screen, only the attempt counter increments.
    - Wrong on the third attempt → `demote_skill_node`: re-serves a problem on the skill's prerequisite (or, for a root skill with no prerequisite, falls back to a fresh problem on the same skill).
-   - Correct, and `quest_length` reached or 2 skills mastered → `end_session`.
-   - Correct, and the graded skill's mastery is now `>= MASTERY_THRESHOLD` (0.8) → `advance_skill_node`, which picks the next skill (`select_next_skill`) and generates its first problem in one node — there's no `SessionState` field to carry a "just-chosen skill" across a separate hop, so selection and generation are fused here.
+   - Correct, and both parent skills are now mastered (all four sub-skills past the gate) or `quest_length` is reached → `end_session`.
+   - Correct, and the graded skill now passes `is_mastered` → `advance_skill_node`, which picks the next skill (`select_next_skill`) and generates its first problem in one node — there's no `SessionState` field to carry a "just-chosen skill" across a separate hop, so selection and generation are fused here.
    - Correct otherwise → `new_problem_node`: another problem on the same skill.
 6. Every node above (`generate_problem`, `hold_non_signal`, `new_problem`, `retry_problem`, `demote_skill`, `advance_skill`, `end_session`) terminates at `END`. Whatever `SessionState` comes out is what `api.py` stores back into its session dict and reshapes into the HTTP response — reading `last_diagnosis`/`remediation` straight off it rather than recomputing them.
 
@@ -88,16 +88,30 @@ Inside the graph:
 - **`LastResponse`** — `answer`, `correct`, `time_taken_sec`. `correct` is provisional when a caller submits a new answer (see above) — never trust it downstream of grading.
 - **`Misconception`** — `skill`, `bug_type`, `timestamp`; appended to `SessionState.misconception_log` when an answer is wrong and a specific bug rule matched (excluded for `unclassified`, per `grade_and_diagnose_node` in `graph.py`).
 - **`EngagementState`** — `streak`, `xp`, `frustration_signal`, `consecutive_wrong` (signal-bearing wrong answers in a row; drives the 4-in-a-row fatigue stop).
-- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `last_diagnosis` (the `DiagnosisResult` `grade_and_diagnose_node` just produced, `None` before any signal-bearing answer this turn), `remediation` (the `Remediation` `build_remediation_node` just produced, `None` on a correct answer or before grading), `engagement`, `problems_completed`, `quest_length` (default 10), `pending_resurface`/`resurface_progress`/`resurfaced_skills` (skill resurfacing bookkeeping — see below), `next_action`.
+- **`SessionState`** — the full turn-to-turn state threaded through the graph: `student_id`, `session_id`, `skill_mastery` (dict of skill → BKT probability), `misconception_log`, `current_problem`, `attempt_number` (1-indexed, resets only on a new problem), `attempt_history` (`(answer, bug_type)` tuples for the current problem), `last_response`, `last_diagnosis` (the `DiagnosisResult` `grade_and_diagnose_node` just produced, `None` before any signal-bearing answer this turn), `remediation` (the `Remediation` `build_remediation_node` just produced, `None` on a correct answer or before grading), `engagement`, `mastery_run` (per skill, the count of consecutive signal-bearing answers that left it at or above the threshold — see the mastery model below), `problems_completed`, `quest_length` (default 16), `pending_resurface`/`resurface_progress`/`resurfaced_skills` (skill resurfacing bookkeeping — see below), `next_action`.
 
-`pending_resurface` (the skill a demotion just moved the student off of), `resurface_progress` (correct answers on the prerequisite since that demotion), and `resurfaced_skills` (skills that already used their one resurface chance) implement skill resurfacing (revision-plan §7.3): `demote_skill_node` sets `pending_resurface`, a `resurface_skill_node` brings that skill back once `resurface_progress` reaches 2 — deliberately bypassing the 0.8 mastery-threshold check, since the prerequisite being re-answered correctly twice is itself the signal — and a second attempt-3 failure on the resurfaced skill ends the quest rather than demoting again.
+`pending_resurface` (the skill a demotion just moved the student off of), `resurface_progress` (correct answers on the prerequisite since that demotion), and `resurfaced_skills` (skills that already used their one resurface chance) implement skill resurfacing (revision-plan §7.3): `demote_skill_node` sets `pending_resurface`, a `resurface_skill_node` brings that skill back once `resurface_progress` reaches 2 — deliberately bypassing the mastery gate, since the prerequisite being re-answered correctly twice is itself the signal — and a second attempt-3 failure on the resurfaced skill ends the quest rather than demoting again.
 - **`DiagnosisResult`** (also in `models/state.py`) — `correct`, `bug_type | None`, `hint`, `visual`, `attempts_remaining`, `reveal_answer`; what `grade_and_diagnose()` returns.
 - **`Remediation`** — `hint`, `visual`, `reveal_answer`; a subset of `DiagnosisResult` projected by `build_remediation()`, and wired into the graph as `build_remediation_node` (see "How a turn flows" above) — a seam for remediation-specific shaping (manipulative payload detail, worked-solution steps) to grow into later without touching the pure grading path.
 - **`BKTParams`** (`models/bkt.py`) — `p_init=0.3`, `p_transit=0.15`, `p_slip=0.1`, `p_guess=0.05`.
 
 ## Mastery model (BKT) — `models/bkt.py`
 
-`update_mastery(mastery, skill, correct, params)` implements the standard Bayesian Knowledge Tracing update exactly as specified in `CLAUDE.md`: a Bayesian posterior update from the observed correct/incorrect response, followed by the fixed learning-transit step. `MASTERY_THRESHOLD = 0.8` is imported from here by both `graph.py` (routing) and `curriculum.py` (unlock checks) — it's the single definition of "mastered" in the codebase. The function returns a new dict rather than mutating its input.
+`update_mastery(mastery, skill, correct, params)` implements the standard Bayesian Knowledge Tracing update exactly as specified in `CLAUDE.md`: a Bayesian posterior update from the observed correct/incorrect response, followed by the fixed learning-transit step. The function returns a new dict rather than mutating its input.
+
+`MASTERY_THRESHOLD = 0.8` is the bar, but crossing it once is not mastery. With these parameters one correct answer lifts a fresh skill from 0.30 to ~0.9025, straight past the threshold — so a bare comparison flagged every skill mastered on its first success, and (combined with the old "any 2 skills mastered" quest stop) made subtraction unreachable by play. `is_mastered(skill, state)`, also defined here, is the single definition of "mastered" in the codebase:
+
+```python
+def is_mastered(skill: str, state: SessionState) -> bool:
+    return (state.skill_mastery.get(skill, 0.0) >= MASTERY_THRESHOLD
+            and state.mastery_run.get(skill, 0) >= MASTERY_MIN_RUN)
+```
+
+`MASTERY_MIN_RUN = 3`. `update_mastery_node` maintains `state.mastery_run`: it increments the graded skill's entry when the new value is at or above the threshold and zeroes it otherwise. Non-signal submissions never reach that node, and `digit_reversal` answers skip it for the same reason they skip the BKT update — the underlying skill is intact, so they neither penalize nor reward.
+
+Every caller goes through `is_mastered`: `graph.py` (routing and the quest-end check), `curriculum.py` (`select_next_skill`, which now takes the whole `SessionState` since a bare mastery dict no longer carries enough), `skill_graph.py` (`is_unlocked`), and `api.py` (the `mastered` flag in `skill_progress`, which is what the quest map and the end-of-quest report render). The UI holds no threshold of its own, so it cannot disagree with the engine.
+
+One consequence worth knowing: the gate is sticky. From a saturated skill it takes four consecutive wrong answers to fall back under 0.8, and the fatigue stop ends the session at exactly four — so a genuinely mastered skill is not un-mastered mid-session.
 
 ## Skills: templates + bug rules (`skills/`)
 
@@ -123,6 +137,15 @@ addition_no_carry → addition_carry → subtraction_no_borrow → subtraction_b
 ```
 
 `select_next_skill()` (`nodes/curriculum.py`) walks `topological_order()` and returns the first skill that's unlocked (all prerequisites mastered) and not yet mastered itself; if everything is mastered it falls back to the last skill in order (there's no distinct "curriculum complete" state).
+
+`DEFAULT_SKILL_GRAPH` also carries a `groups` mapping — the same four skills seen as two **parent skills**:
+
+| Parent | Sub-skills |
+|---|---|
+| `addition` | `addition_no_carry`, `addition_carry` |
+| `subtraction` | `subtraction_no_borrow`, `subtraction_borrow` |
+
+Each sub-skill keeps its own independent mastery value and its own threshold. `is_group_mastered(group, state)` is true only when every sub-skill under it is mastered, and `all_groups_mastered(state)` — true when both parents are — is the quest's curriculum-complete ending. `group_of(skill)` gives a sub-skill's parent and `skills_in_group(group)` the reverse, and `GROUP_DISPLAY_NAMES` maps a parent's tag to the label the UI shows — `api.py` sends all of it through `skill_progress` and `group_progress` so the quest map and the end-of-quest report can group the four nodes under two headings. **Grouping changes aggregation and reporting only**: traversal order is untouched.
 
 ## Event log (`logging/events.py`)
 
@@ -159,10 +182,11 @@ None of these run inside the graph — they're all invoked from `api.py`, *after
 
 Session state (plus the flavor-text cache, attempt tracker, and narrative context/cache) lives in plain in-memory dicts keyed by `session_id` — restarting the process drops every session, and this only works correctly with a single uvicorn worker. This matches `CLAUDE.md`'s "no persistence beyond current session" non-goal; it is not an oversight. (The event log above is the one piece of durable storage in the system, and it's a separate SQLite file, not session state.)
 
-The HTTP response models (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`, `ProblemOut`, `NarrativeOut`) are deliberately separate from `SessionState` — the wire format hides things the frontend shouldn't see and derives things it needs that `SessionState` doesn't carry directly:
+The HTTP response models (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`, `GroupProgress`, `ProblemOut`, `NarrativeOut`) are deliberately separate from `SessionState` — the wire format hides things the frontend shouldn't see and derives things it needs that `SessionState` doesn't carry directly:
 
 - `current_problem.correct_answer` is never sent before grading; inside `Feedback` it's still withheld unless the answer was correct or `reveal_answer` is true (attempt 3), per constraint #7.
-- `misconception_log` and raw `skill_mastery` never reach the client at all — only the derived `skill_progress` list (`skill`, `mastery`, `unlocked`, `mastered` per skill, computed from `DEFAULT_SKILL_GRAPH`) and, per answer, a single `Feedback` object.
+- The client gets a derived `skill_progress` list (`skill`, `mastery`, `unlocked`, `mastered`, and the parent `group` per sub-skill, computed from `DEFAULT_SKILL_GRAPH`), a `group_progress` list (one row per parent skill: `mastered_count`, `total`, `mastered`), and, per answer, a single `Feedback` object. `mastered` on both is `is_mastered`, never a raw threshold comparison, so the quest map cannot show a skill as finished that the router would still serve problems for.
+- `skill_mastery`, `mastery_run` and `misconception_log` are also sent, but only so the frontend can cache a genuinely complete session snapshot in `localStorage` for rehydration and restart recovery (`/sessions/{id}/restore` takes them straight back). None of them carry a `correct_answer`.
 
 CORS (`CORSMiddleware`) allowlists exactly `http://localhost:5173` and `127.0.0.1:5173` — the Vite dev server's default port.
 
@@ -181,8 +205,9 @@ uv run uvicorn backend.api:app --reload --port 8000
 
 | File | Covers |
 |---|---|
-| `test_api.py` | the four HTTP endpoints |
+| `test_api.py` | the HTTP endpoints, the seed profiles, and the sustained-mastery gate as the wire format reports it |
 | `test_bkt.py` | `update_mastery()` posterior/transit math |
+| `test_mastery_gate.py` | `is_mastered()`, the `mastery_run` bookkeeping that feeds it, and the routing that depends on it (advance, and both quest-end conditions) |
 | `test_bug_rules.py` | every misconception detector firing on a known wrong answer, including the `86 + 94 → 1017` catalog case |
 | `test_curriculum.py` | `select_next_skill()` |
 | `test_engagement.py` | `decide_engagement()` |
@@ -192,7 +217,7 @@ uv run uvicorn backend.api:app --reload --port 8000
 | `test_narrative.py` | the four LLM touchpoints' fail-open behavior and isolation |
 | `test_problem_gen.py` | per-skill template generators |
 | `test_retry_ladder.py` | the 3-attempt retry ladder, prerequisite demotion, and quest/fatigue termination routing |
-| `test_skill_graph.py` | the prerequisite DAG (`is_unlocked`, `topological_order`) |
+| `test_skill_graph.py` | the prerequisite DAG (`is_unlocked`, `topological_order`) and the skill groups (`group_of`, `is_group_mastered`, `all_groups_mastered`) |
 | `conftest.py` | shared fixtures |
 
 ```bash

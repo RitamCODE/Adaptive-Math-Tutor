@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseQuestion, toBlocks } from "../lib/arithmetic";
+import { bandFromMastery } from "../lib/remediation";
 import { playBundleSnap } from "../lib/sound";
 
 const PLACE_ORDER = ["ones", "tens", "hundreds"];
@@ -44,12 +45,6 @@ function TokenIcon({ tokenType }) {
   return <Flat />;
 }
 
-function bandFromMastery(mastery) {
-  if (mastery < 0.4) return "open";
-  if (mastery <= 0.7) return "collapsed";
-  return "hidden";
-}
-
 function initWorkspace(operation, a) {
   if (operation === "add") {
     return { ones: { loose: 0 }, tens: { loose: 0 }, hundreds: { loose: 0 } };
@@ -92,7 +87,10 @@ function computeInvite(columns, removeTarget, removed) {
 export default function BundlingSticks({ problem, feedback, mastery, onInteract }) {
   const parsed = parseQuestion(problem.question);
 
-  const isForcedDiagnostic =
+  // Attempt 2 of a wrong answer whose diagnosis names this manipulative
+  // family. Never true on attempt 1: the backend withholds `visual` until
+  // attempt 2, so nothing here can surface before a mistake.
+  const isRemediating =
     !!feedback &&
     feedback.correct === false &&
     feedback.attempts_remaining === 1 &&
@@ -100,10 +98,14 @@ export default function BundlingSticks({ problem, feedback, mastery, onInteract 
     feedback.visual.startsWith("base10_blocks/");
 
   const band = bandFromMastery(mastery ?? 0);
+  // Only the lowest band earns an automatic open, and only while remediating.
+  const isForcedDiagnostic = isRemediating && band === "open";
   const operation = parsed?.operator === "-" ? "sub" : "add";
   const resetKey = `${problem.problem_id}:${isForcedDiagnostic}`;
 
-  const [expanded, setExpanded] = useState(band === "open");
+  // Always closed until either a low-mastery remediation opens it or the
+  // student asks. Mastery alone never opens a manipulative any more.
+  const [expanded, setExpanded] = useState(false);
   const [columns, setColumns] = useState(() => (parsed ? initWorkspace(operation, parsed.a) : null));
   const [pileA, setPileA] = useState(() => (parsed && operation === "add" ? toBlocks(parsed.a) : null));
   const [pileB, setPileB] = useState(() => (parsed && operation === "add" ? toBlocks(parsed.b) : null));
@@ -129,7 +131,7 @@ export default function BundlingSticks({ problem, feedback, mastery, onInteract 
     setDrag(null);
     setAnimInfo(null);
     setAnimating(false);
-    setExpanded(band === "open");
+    setExpanded(false);
     return () => {
       timeoutsRef.current.forEach(clearTimeout);
       timeoutsRef.current = [];
@@ -253,18 +255,22 @@ export default function BundlingSticks({ problem, feedback, mastery, onInteract 
   }
 
   const invite = operation === "sub" ? computeInvite(columns, removeTarget, removed) : null;
-  const liveTotal = 100 * columns.hundreds.loose + 10 * columns.tens.loose + columns.ones.loose;
-  const showToggle = band !== "open";
+
+  // The middle band doesn't open the blocks, it invites them: the card is
+  // highlighted next to the hint so the offer is visible, one tap away.
+  // Above 0.7 the card stays in its quiet always-available state and the
+  // hint stands alone.
+  const isOffered = isRemediating && band === "offered" && !expanded;
 
   return (
-    <div className="bundling-sticks">
+    <div className={`bundling-sticks${isOffered ? " bundling-sticks-offered" : ""}`}>
       <div className="bundling-sticks-header">
         <span>🧮 Base-ten blocks</span>
-        {showToggle && (
-          <button type="button" className="bundling-sticks-toggle" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? "Hide blocks" : "Show blocks"}
-          </button>
-        )}
+        {/* The opt-in is available at every mastery level and on every
+            attempt, and is closed until the student asks. */}
+        <button type="button" className="bundling-sticks-toggle" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Hide blocks" : isOffered ? "Show me the blocks" : "Show blocks"}
+        </button>
       </div>
 
       {expanded && (
@@ -327,8 +333,6 @@ export default function BundlingSticks({ problem, feedback, mastery, onInteract 
               </div>
             )}
           </div>
-
-          <div className="bundling-sticks-readout">{liveTotal}</div>
 
           <div ref={ghostRef} className={`token-ghost${drag ? " token-ghost-visible" : ""}`} aria-hidden="true">
             {drag && <TokenIcon tokenType={drag.tokenType} />}

@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from backend.api import _NARRATIVE_CONTEXT, _SESSIONS, app
 from backend.logging import events
+from backend.models.bkt import MASTERY_MIN_RUN
 
 client = TestClient(app)
 
@@ -116,20 +117,81 @@ def test_reward_narrative_context_not_queued_on_ordinary_correct_answer():
     assert "reward" not in _NARRATIVE_CONTEXT[session_id]
 
 
-def test_reward_narrative_context_queued_on_advance_skill():
-    # A fresh session's very first correct answer masters that skill outright
-    # under the real BKT constants (see above) and, since only one of the
-    # four skills is mastered so far, routes to "advance_skill" rather than
-    # "end_session" (which only fires once 2 skills are mastered).
-    start = client.post("/sessions", json={"student_id": "reward-gate-2"})
-    session_id = start.json()["session_id"]
+def _answer_current_problem_correctly(session_id: str) -> dict:
+    """Submit the right answer to whatever problem the session is showing."""
     correct_answer = _SESSIONS[session_id].current_problem.correct_answer
-
-    response = client.post(
+    return client.post(
         f"/sessions/{session_id}/answer",
         json={"answer": correct_answer, "time_taken_sec": 3.0},
-    )
-    assert response.json()["next_action"] == "advance_skill"
+    ).json()
+
+
+def test_reward_narrative_context_queued_on_advance_skill():
+    # Mastery is sustained, not a single crossing: a skill counts as mastered
+    # only once it has held at or above the threshold after each of the last
+    # MASTERY_MIN_RUN signal-bearing answers. So the first two correct answers
+    # stay on the same skill and only the third advances, taking touchpoint 3
+    # ("effort-aware reward framing") with it.
+    start = client.post("/sessions", json={"student_id": "reward-gate-2"})
+    session_id = start.json()["session_id"]
+
+    for _ in range(MASTERY_MIN_RUN - 1):
+        assert _answer_current_problem_correctly(session_id)["next_action"] == "new_problem"
+        assert "reward" not in _NARRATIVE_CONTEXT[session_id]
+
+    body = _answer_current_problem_correctly(session_id)
+    assert body["next_action"] == "advance_skill"
+    assert "reward" in _NARRATIVE_CONTEXT[session_id]
+
+
+def test_skill_is_not_mastered_until_the_run_is_complete():
+    """The UI's `mastered` flag and the router share one definition, so a
+    skill that has crossed 0.8 but not held it reads as unmastered."""
+    start = client.post("/sessions", json={"student_id": "run-gate-1"})
+    session_id = start.json()["session_id"]
+    skill = _SESSIONS[session_id].current_problem.skill_tag
+
+    body = _answer_current_problem_correctly(session_id)
+    assert body["skill_mastery"][skill] > 0.8  # crossed on answer one
+    progress = {entry["skill"]: entry for entry in body["skill_progress"]}
+    assert progress[skill]["mastered"] is False
+    assert body["mastery_run"][skill] == 1
+
+
+def test_quest_ends_only_when_both_parent_skills_are_mastered():
+    """Playing a fresh session perfectly reaches subtraction and ends on
+    curriculum completion, not on an "any 2 skills" count."""
+    start = client.post("/sessions", json={"student_id": "full-quest-1"})
+    session_id = start.json()["session_id"]
+
+    skills_served = []
+    for _ in range(40):
+        skills_served.append(_SESSIONS[session_id].current_problem.skill_tag)
+        body = _answer_current_problem_correctly(session_id)
+        if body["next_action"] == "end_session":
+            break
+    else:
+        assert False, "quest never ended"
+
+    assert "subtraction_no_borrow" in skills_served
+    assert "subtraction_borrow" in skills_served
+    assert body["problems_completed"] < body["quest_length"]
+    assert all(entry["mastered"] for entry in body["group_progress"])
+
+
+def test_final_mastery_moment_still_queues_its_narrative():
+    """route_after_engagement checks the quest-end conditions before the
+    advance branch, so the answer that masters the last skill exits as
+    end_session — it must still count as a mastery moment."""
+    start = client.post("/sessions", json={"student_id": "finale-1"})
+    session_id = start.json()["session_id"]
+
+    for _ in range(40):
+        body = _answer_current_problem_correctly(session_id)
+        if body["next_action"] == "end_session":
+            break
+
+    assert "mastery" in _NARRATIVE_CONTEXT[session_id]
     assert "reward" in _NARRATIVE_CONTEXT[session_id]
 
 

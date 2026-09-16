@@ -1,5 +1,80 @@
 # Changelog
 
+## 2026-09-16 — Sustained mastery, skill groups, and manipulatives as remediation
+
+Three connected defects made the app mis-describe what a student knows. With the project's
+BKT parameters one correct answer lifts a fresh skill from 0.30 to 0.9025, so a bare
+`>= 0.8` check flagged every skill mastered on its first success; `route_after_engagement`
+then ended the quest at `mastered_count >= 2`, which — because the DAG unlocks strictly in
+order — was in practice "both addition sub-skills done", leaving subtraction unreachable by
+play and ending the `fluent` seed on its first answer. Mastery now has to be *held*: a skill
+counts as mastered only after being at or above 0.8 following each of the last 3 consecutive
+signal-bearing answers (`MASTERY_MIN_RUN`, tracked in a new `SessionState.mastery_run`),
+expressed as one helper, `is_mastered(skill, state)`, that every raw threshold comparison in
+the codebase now calls — routing, `select_next_skill` (which takes the whole `SessionState`
+now), `SkillGraph.is_unlocked`, and the `mastered` flag `api.py` sends the UI — so the engine
+and the interface cannot disagree. Non-signal submissions and `digit_reversal` answers leave
+the run untouched rather than resetting it, matching the existing "mastery is not penalized"
+rule. Added the skill-group model to `skill_graph.py`: the four skills are two parent skills
+of two sub-skills each, each sub-skill keeping its own independent mastery and threshold, and
+the quest now ends when both parents are mastered, on `quest_length` (raised 10 → 16, since a
+flawless run needs 12 problems), or on the unchanged 4-consecutive-wrong fatigue stop.
+Manipulatives stopped being default furniture: `bandFromMastery` moved to a shared
+`frontend/src/lib/remediation.js` and was repointed at the remediation decision, so nothing
+opens on attempt 1 at any mastery (a fresh student at `p_init` = 0.3 previously got blocks
+before making a single mistake) and a wrong answer's band decides what arrives with the hint —
+below 0.4 the manipulative opens pre-loaded, 0.4–0.7 it is highlighted one tap away, above 0.7
+the hint stands alone — with the opt-in toggle available at every level and closed by default.
+Pinned the equation above the manipulative area as a sticky line (it sat *below* a full card of
+block rows and scrolled off), capped token art at the 48px touch target in both dimensions (a
+ones-stick was rendering 48x144 from a stretched 16x48 viewBox), and removed the "Combined
+total" readout, which tallied the assembled place values into the finished answer before the
+student typed it — the piles, per-place counts and bundling animation all stay. Re-tuned all
+three seeds with `mastery_run` and the new quest length, leaving `fluent` one answer short of
+completing Addition so it plays instead of ending immediately. Also fixed a gap the rewrite
+exposed: the quest-end check runs before the advance branch, so the answer mastering the final
+skill exited as `end_session` and never queued LLM touchpoints 2 and 3 — the session's biggest
+moment was the one that went unnarrated. 26 new tests (new `test_mastery_gate.py`, plus the
+first coverage of either quest-end condition); full suite (154) green. Verified live
+in-browser at 1024x768: a fresh session reaches and is served `subtraction_borrow` and ends on
+curriculum completion in 12 problems, no manipulative appears on any attempt 1, all three
+bands behave distinctly, and `999 + 999` with every place at nine tokens produces no
+horizontal scrolling. Docs swept against the new behaviour: `CLAUDE.md`, all three READMEs and
+eight `CHECKLIST.md` rows, plus a pass-2 table in `docs/DOCS_AUDIT.md`; `revision-plan.md` and
+`UI_DESIGN.md` left frozen per their role. The sweep also turned up two pre-existing errors and
+fixed them: both READMEs claimed `skill_mastery`/`misconception_log` "never reach the client"
+when they are in fact sent as the localStorage snapshot, and the root README carried a
+parenthetical about stale `docs/PLAN.md` references that had themselves been fixed in `957ca15`.
+
+## 2026-09-16 — Fixed `struggling` seed blocking skill-resurfacing demo, verified live
+
+The `struggling` seed profile (`backend/api.py`) started `engagement.consecutive_wrong` at 1
+instead of 0. Since `route_after_engagement` checks the 4-consecutive-wrong fatigue stop
+before the attempt-3 demote branch, three wrong answers on the seed's starting problem hit
+exactly 4 consecutive wrong and ended the session via the fatigue stop instead of demoting —
+meaning the seed built for demoing revision-plan 7.3's resurfacing behavior could never
+actually reach it. Confirmed the underlying graph logic itself was already correct (direct
+`graph.app.invoke()` calls with `consecutive_wrong=0` demote and resurface exactly per spec)
+before concluding the seed fixture was the only broken part. Fixed by starting the seed at
+`consecutive_wrong=0`; no test asserted the old value. Verified the full flow live in the
+browser via `?seed=struggling`: demote to `addition_no_carry` ("Take a breath" message), two
+correct answers there resurface `addition_carry` (blocks reopen at its still-low mastery), a
+third failure on the resurfaced skill ends the quest cleanly on the lower-level win with the
+unresolved misconception listed under "Still practicing." Full suite (128) still green.
+
+## 2026-09-16 — Fixed stale flavor text on problem transitions
+
+Found during a full-system check: `_to_session_response` served whatever flavor text was
+cached for the session regardless of which problem it was generated for. Since
+`_refresh_flavor_text` runs as a background task scheduled *after* a new problem is already
+in the response, every problem transition briefly (and, since the frontend never re-polls,
+often permanently) showed the *previous* problem's story glued to the new numbers — e.g.
+"44 + 66" paired with a story about "3 toy cars... 5 more toy cars" left over from the prior
+problem. Fixed in `backend/api.py` by only returning the cached text when
+`_FLAVOR_TEXT_PROBLEM_ID` matches the current problem's id, falling back to `None` (plain
+numeric problem) otherwise, per touchpoint 1's documented fallback behavior. Full suite
+(128) still green; reproduced and confirmed fixed live via the API.
+
 ## 2026-09-16 — Documentation audit
 
 Checked every README/`CLAUDE.md`/`docs/*.md` against the actual code. Found and fixed five

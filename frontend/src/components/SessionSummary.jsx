@@ -27,6 +27,7 @@ export default function SessionSummary({ sessionData, elapsedMs, onPlayAgain }) 
       .catch(() => setCatalog({}));
   }, []);
 
+  const groups = sessionData.group_progress ?? [];
   const masteredSkills = sessionData.skill_progress.filter((entry) => entry.mastered);
   const masteredTags = new Set(masteredSkills.map((entry) => entry.skill));
 
@@ -64,9 +65,27 @@ export default function SessionSummary({ sessionData, elapsedMs, onPlayAgain }) 
         <h3>Skills mastered</h3>
         {masteredSkills.length > 0 ? (
           <ul className="session-summary-list">
-            {masteredSkills.map((entry) => (
-              <li key={entry.skill}>{SKILL_DISPLAY_NAMES[entry.skill] || entry.skill}</li>
-            ))}
+            {/* Reported at the parent level — Addition, Subtraction — with the
+                sub-skills beneath, so the student sees the two big things they
+                were working toward rather than four tags. A parent is only
+                listed as complete when both of its sub-skills are. */}
+            {groups.map((group) => {
+              const done = masteredSkills.filter((entry) => entry.group === group.group);
+              if (done.length === 0) return null;
+              return (
+                <li key={group.group}>
+                  <span className="session-summary-group">
+                    {group.display_name}
+                    {group.mastered ? " — mastered" : ` — ${group.mastered_count} of ${group.total}`}
+                  </span>
+                  <ul className="session-summary-sublist">
+                    {done.map((entry) => (
+                      <li key={entry.skill}>{SKILL_DISPLAY_NAMES[entry.skill] || entry.skill}</li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="session-summary-empty">Still building toward the first mastered skill.</p>

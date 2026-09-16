@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseQuestion, toBlocks } from "../lib/arithmetic";
+import { bandFromMastery } from "../lib/remediation";
 
 const PLACE_ORDER = ["hundreds", "tens", "ones"];
 const PLACE_LABEL = { hundreds: "Hundreds", tens: "Tens", ones: "Ones" };
@@ -22,8 +23,14 @@ function zeroCounts() {
  * grouped by place value (reusing `toBlocks`, the same helper BundlingSticks
  * uses) so a 3-digit operand still means at most 9 hops per place, not
  * hundreds of individual unit hops.
+ *
+ * Unlike the blocks and the ten frame this is not a general scaffold a
+ * student can call up on any problem — it is the remediation for a specific
+ * set of misconceptions, so it appears only inside its own remediation
+ * window (attempt 2 of a wrong answer diagnosed as one of them), and then
+ * only as much as the mastery band allows.
  */
-export default function NumberLine({ problem, feedback, onInteract }) {
+export default function NumberLine({ problem, feedback, mastery, onInteract }) {
   const parsed = parseQuestion(problem.question);
 
   const isForcedDiagnostic =
@@ -33,6 +40,10 @@ export default function NumberLine({ problem, feedback, onInteract }) {
     typeof feedback.visual === "string" &&
     feedback.visual.startsWith("number_line/");
 
+  const band = bandFromMastery(mastery ?? 0);
+  // Below 0.4 the error earns an open manipulative; between 0.4 and 0.7 it is
+  // offered one tap away alongside the hint; above 0.7 the hint stands alone.
+  const [expanded, setExpanded] = useState(false);
   const [done, setDone] = useState(zeroCounts);
   const [drag, setDrag] = useState(null);
 
@@ -42,9 +53,14 @@ export default function NumberLine({ problem, feedback, onInteract }) {
   useEffect(() => {
     setDone(zeroCounts());
     setDrag(null);
+    setExpanded(false);
   }, [problem.problem_id]);
 
-  if (!isForcedDiagnostic || !parsed) return null;
+  useEffect(() => {
+    if (isForcedDiagnostic && band === "open") setExpanded(true);
+  }, [isForcedDiagnostic, band]);
+
+  if (!isForcedDiagnostic || !parsed || band === "hint_only") return null;
 
   const direction = parsed.operator === "-" ? -1 : 1;
   const hopSupply = toBlocks(parsed.b);
@@ -86,58 +102,65 @@ export default function NumberLine({ problem, feedback, onInteract }) {
   }
 
   return (
-    <div className="number-line">
+    <div className={`number-line${band === "offered" && !expanded ? " number-line-offered" : ""}`}>
       <div className="number-line-header">
         <span>🔢 Number line</span>
+        <button type="button" className="number-line-toggle" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Hide number line" : "Show number line"}
+        </button>
       </div>
 
-      <div className="number-line-supply">
-        {PLACE_ORDER.map((place) => {
-          const remaining = hopSupply[place] - done[place];
-          if (remaining <= 0) return null;
-          return (
-            <div className="number-line-pile" key={place}>
-              <div className="number-line-pile-label">
-                {PLACE_LABEL[place]} hops · {remaining}
-              </div>
-              <div className="number-line-pile-tokens">
-                {Array.from({ length: remaining }).map((_, i) => (
-                  <div
-                    key={`${place}-${i}`}
-                    className={`hop-token hop-token-${place}${
-                      drag?.place === place ? " dragging" : ""
-                    }`}
-                    onPointerDown={(e) => handleHopPointerDown(e, place)}
-                    onPointerMove={handleHopPointerMove}
-                    onPointerUp={handleHopPointerUp}
-                  >
-                    <HopArrow />
+      {expanded && (
+        <>
+          <div className="number-line-supply">
+            {PLACE_ORDER.map((place) => {
+              const remaining = hopSupply[place] - done[place];
+              if (remaining <= 0) return null;
+              return (
+                <div className="number-line-pile" key={place}>
+                  <div className="number-line-pile-label">
+                    {PLACE_LABEL[place]} hops · {remaining}
                   </div>
-                ))}
-              </div>
+                  <div className="number-line-pile-tokens">
+                    {Array.from({ length: remaining }).map((_, i) => (
+                      <div
+                        key={`${place}-${i}`}
+                        className={`hop-token hop-token-${place}${
+                          drag?.place === place ? " dragging" : ""
+                        }`}
+                        onPointerDown={(e) => handleHopPointerDown(e, place)}
+                        onPointerMove={handleHopPointerMove}
+                        onPointerUp={handleHopPointerUp}
+                      >
+                        <HopArrow />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="number-line-track" ref={trackRef}>
+            <div className="number-line-start-label">{parsed.a}</div>
+            <div className="number-line-rail">
+              <div
+                className={`number-line-marker${direction === -1 ? " number-line-marker-back" : ""}`}
+                style={{ left: `${progressPct}%` }}
+              />
             </div>
-          );
-        })}
-      </div>
+            <div className="number-line-direction" aria-hidden="true">
+              {direction === 1 ? "→" : "←"}
+            </div>
+          </div>
 
-      <div className="number-line-track" ref={trackRef}>
-        <div className="number-line-start-label">{parsed.a}</div>
-        <div className="number-line-rail">
-          <div
-            className={`number-line-marker${direction === -1 ? " number-line-marker-back" : ""}`}
-            style={{ left: `${progressPct}%` }}
-          />
-        </div>
-        <div className="number-line-direction" aria-hidden="true">
-          {direction === 1 ? "→" : "←"}
-        </div>
-      </div>
+          <div className="number-line-readout">{currentPosition}</div>
 
-      <div className="number-line-readout">{currentPosition}</div>
-
-      <div ref={ghostRef} className={`token-ghost${drag ? " token-ghost-visible" : ""}`} aria-hidden="true">
-        {drag && <HopArrow />}
-      </div>
+          <div ref={ghostRef} className={`token-ghost${drag ? " token-ghost-visible" : ""}`} aria-hidden="true">
+            {drag && <HopArrow />}
+          </div>
+        </>
+      )}
     </div>
   );
 }

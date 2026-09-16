@@ -38,16 +38,21 @@ src/
     ProblemCard.jsx         current problem + flavor text + feedback + NumberPad + manipulative canvas
     NumberPad.jsx           on-screen digit/backspace/submit pad — no <input type="number"> anywhere
     FeedbackBanner.jsx      correct/incorrect feedback + misconception hint + narrative copy
-    SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes
+    SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes,
+                             grouped under the two parent skills (Addition, Subtraction) with an
+                             "n of 2" count per group
     StatsBar.jsx            XP, streak, frustration note
     Mascot.jsx              growth-stage companion that reacts to answers (idle/thinking/correct/incorrect)
     BundlingSticks.jsx      base-10-blocks manipulative for addition-with-carrying and subtraction-with-borrowing
     NumberLine.jsx          manipulative for the four number_line/* misconceptions (off-by-one, operator
                              misread, reversed operands, digit reversal)
-    TenFrame.jsx            low-mastery scaffold for addition_no_carry (which has no bug rules of its own)
+    TenFrame.jsx            opt-in scaffold for addition_no_carry (which has no bug rules of its own,
+                             so nothing can auto-open it — it appears only on request)
     SessionSummary.jsx      end-of-quest report — skills mastered, misconceptions repaired, "Play again"
   lib/
     arithmetic.js           parses `question` strings into place-value blocks for the manipulatives
+    remediation.js           bandFromMastery(): which remediation a wrong answer earns —
+                             open / offered / hint-only, at the 0.4 and 0.7 mastery bands
     praise.js                the deterministic four-branch per-problem praise lookup (speed/named-skill/
                              effort/strategy) CLAUDE.md's copy-limits section requires — not an LLM call
     sound.js                 three Web Audio API synthesized sound effects (correct, bundle-into-ten,
@@ -86,11 +91,16 @@ Because a wrong answer on attempt 1 or 2 keeps the *same* `problem_id` (the retr
 
 ### Manipulatives and the end of a quest
 
-`ProblemCard` renders one of the three manipulatives (`BundlingSticks`, `NumberLine`, `TenFrame` — see the file structure above) as the hero surface above the equation, chosen by skill tag and gated on the current skill's live BKT mastery (the fading bands from `CLAUDE.md`: open below 0.4, collapsed-but-one-tap-open between 0.4 and 0.7, abstract-only and available-on-request above 0.7) — a wrong answer on attempt 2 force-opens the relevant one regardless of band, pre-seeded from the student's own wrong answer via `lib/arithmetic.js`. `lib/sound.js` fires alongside correct answers, a manipulative bundling into a ten, and quest completion. When `next_action === "end_session"`, `App` renders `SessionSummary` instead of `ProblemCard` — skills mastered, misconceptions repaired (labeled via `getMisconceptionCatalog`), problems solved, elapsed time, and a "Play again" button that clears the cached session.
+`ProblemCard` pins the **equation** at the top of the card (`position: sticky`, so the numerals never need scrolling to however tall the manipulative below grows) and renders the manipulative area underneath it. The three manipulatives (`BundlingSticks`, `NumberLine`, `TenFrame` — see the file structure above) are chosen by skill tag, and they are **remediation, not default furniture**:
+
+- Nothing opens on attempt 1 of any problem, at any mastery. The backend withholds the `visual` field until attempt 2, and there is no low-mastery auto-open.
+- On a wrong, signal-bearing answer, `bandFromMastery` (`lib/remediation.js`, shared rather than copied per component) decides what the hint comes with: **below 0.4** the manipulative opens pre-seeded from the student's own wrong answer via `lib/arithmetic.js`; **0.4 to 0.7** it is highlighted and one tap away ("Show me the blocks") but stays closed; **above 0.7** the hint stands alone.
+- The opt-in toggle ("Show blocks" / "Show frame") is present at every mastery level and on every attempt, and closed by default. `NumberLine` is the exception — it is the remediation for four specific misconceptions rather than a general scaffold, so it only appears inside its own remediation window.
+- The blocks show assembled place values and the ten-ones-bundle animation, but no running numeric total: a live tally would put the answer on screen before the student typed it. `lib/sound.js` fires alongside correct answers, a manipulative bundling into a ten, and quest completion. When `next_action === "end_session"`, `App` renders `SessionSummary` instead of `ProblemCard` — skills mastered (reported at the parent-skill level, Addition and Subtraction, with the sub-skills nested beneath), misconceptions repaired (labeled via `getMisconceptionCatalog`), problems solved, elapsed time, and a "Play again" button that clears the cached session.
 
 ## Backend contract
 
-This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`, `NarrativeOut`) and to the skill tags hardcoded in `constants.js`'s `SKILL_DISPLAY_NAMES`. If a new skill is added on the backend, add a matching entry there — an unrecognized `skill_tag` doesn't break anything, `SkillTrailMap` just falls back to rendering the raw tag string. Misconception hint text is not a frontend concern at all: `Feedback.hint` arrives pre-rendered from the backend's `content/misconceptions.json`, so a new bug rule needs no frontend change to display its hint.
+This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse`, `AnswerResponse`, `Feedback`, `SkillProgress`, `GroupProgress`, `NarrativeOut`) and to the skill tags hardcoded in `constants.js`'s `SKILL_DISPLAY_NAMES`. If a new skill is added on the backend, add a matching entry there — an unrecognized `skill_tag` doesn't break anything, `SkillTrailMap` just falls back to rendering the raw tag string. Misconception hint text is not a frontend concern at all: `Feedback.hint` arrives pre-rendered from the backend's `content/misconceptions.json`, so a new bug rule needs no frontend change to display its hint.
 
 ## Known limitations
 

@@ -1,4 +1,8 @@
 :root {
+  /* Height of the sticky streak/XP bar. The equation sticks directly
+     beneath it rather than underneath it — both share the page's scroll
+     container and would otherwise collide at top: 0. */
+  --stats-bar-h: 69px;
   --color-bg: #fbf4e9;
   --color-surface: #fffdf8;
   --color-ink: #3a2b22;
@@ -317,20 +321,27 @@ body {
   color: var(--color-ink-soft);
 }
 
+/* The equation is the persistent hero of the card. It sits above the
+   manipulative area and sticks to the top of the card, so the numerals stay
+   visible for the whole problem no matter how tall the blocks grow beneath
+   them. It keeps this size whether or not a manipulative is present — an
+   earlier rule demoted it to a caption under the canvas, which put the
+   numbers below a full card of block rows and scrolled them off screen. */
 .problem-question {
   font-size: clamp(1.75rem, 5vw, 2.5rem);
   font-weight: 700;
   align-self: center;
   flex-basis: 100%;
-  transition: font-size 150ms ease;
+  position: sticky;
+  top: var(--stats-bar-h);
+  z-index: 2;
+  padding-block: var(--space-1);
+  background: var(--color-surface);
 }
 
-/* Manipulative-as-hero: when a manipulative is actually present, it becomes
-   the dominant surface and the equation demotes to a caption underneath it
-   (revision-plan Part 6, item 2). When nothing renders inside it, the
-   wrapper collapses to nothing and the equation keeps its full prominence. */
 .manipulative-canvas {
   flex-basis: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -338,12 +349,6 @@ body {
 
 .manipulative-canvas:empty {
   display: none;
-}
-
-.problem-card:has(.manipulative-canvas:not(:empty)) .problem-question {
-  font-size: clamp(1.1rem, 3vw, 1.5rem);
-  font-weight: 600;
-  color: var(--color-ink-soft);
 }
 
 /* Feedback flash + shake */
@@ -897,6 +902,12 @@ body {
   flex-wrap: wrap;
   gap: var(--space-3);
   touch-action: none;
+  min-width: 0;
+  /* Backstop only — the rules above are what make the widest realistic
+     problem (999 + 999, nine tokens in every place of both operands) wrap
+     inside the card. If anything ever does exceed it, it scrolls here
+     rather than dragging the whole page sideways. */
+  overflow-x: auto;
 }
 
 .bundling-sticks-canvas.animating {
@@ -910,6 +921,10 @@ body {
   flex-direction: column;
   gap: var(--space-1);
   min-width: 96px;
+  /* Without this a flex item's automatic minimum size is its content's
+     minimum, so a pile full of tokens could push the card wider than the
+     viewport instead of wrapping inside it. */
+  min-width: min(96px, 100%);
 }
 
 .stick-pile-label {
@@ -928,11 +943,15 @@ body {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 64px;
+  flex: 1 1 64px;
 }
 
 .stick-column-label {
   font-size: 0.8rem;
   color: var(--color-ink-soft);
+  /* "Hundreds · 9" is a few pixels wider than the 64px column floor, which
+     clipped the count. Let it wrap rather than widen the column. */
+  overflow-wrap: anywhere;
 }
 
 .stick-column-tokens {
@@ -982,6 +1001,21 @@ body {
   touch-action: none;
 }
 
+/* Cap the rendered token art at the 48px touch target in both dimensions,
+   preserving each SVG's aspect ratio. Without the height cap a ones-stick
+   (a 16x48 viewBox) stretched to the 48px box width rendered 144px tall,
+   making a column of nine of them absurdly deep. 48px is a floor as well as
+   a cap here: CLAUDE.md requires 48px minimum touch targets, so the token
+   box keeps its size and only the artwork inside it is constrained. */
+.stick-svg,
+.bundle-svg,
+.flat-svg {
+  max-width: 48px;
+  max-height: 48px;
+  width: auto;
+  height: 48px;
+}
+
 .stick-token {
   cursor: grab;
 }
@@ -1027,20 +1061,6 @@ body {
 
 .bundle-invites-borrow {
   animation: bundle-invite 1.4s ease-in-out infinite;
-}
-
-.bundling-sticks-readout {
-  align-self: center;
-  min-height: 48px;
-  min-width: 6rem;
-  padding: 0.4rem 1rem;
-  font-size: 1.5rem;
-  font-weight: 700;
-  text-align: center;
-  border-radius: var(--radius-md);
-  border: 2px solid var(--color-locked);
-  background: var(--color-bg);
-  color: var(--color-ink);
 }
 
 .token-ghost {
@@ -1308,4 +1328,76 @@ body {
 
 .dot-circle {
   fill: var(--color-coral);
+}
+
+/* --- Quest map: parent skill groups --- */
+
+.skill-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.skill-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.skill-group-header.mastered {
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 2px var(--color-gold);
+}
+
+.skill-group-count {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.session-summary-group {
+  font-weight: 700;
+}
+
+.session-summary-sublist {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--color-ink-soft);
+}
+
+/* --- Middle remediation band: the manipulative is offered, not opened --- */
+
+/* Below 0.4 a wrong answer opens the blocks outright. Between 0.4 and 0.7 it
+   highlights them instead — visible, named, one tap away, but the student
+   chooses. Above 0.7 neither class applies and the hint stands alone. */
+.bundling-sticks-offered,
+.number-line-offered {
+  border-color: var(--color-teal);
+  box-shadow: 0 0 0 3px rgba(47, 182, 163, 0.18);
+}
+
+.bundling-sticks-offered .bundling-sticks-toggle,
+.number-line-offered .number-line-toggle {
+  background: var(--color-teal);
+  color: white;
+}
+
+.number-line-toggle {
+  border: none;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  min-height: 48px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: var(--color-teal-soft, #d9f2ee);
+  color: var(--color-ink);
 }
