@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-17 — All four skills now render their equation stacked
+
+`addition_no_carry` and `subtraction_no_borrow` used to render a plain horizontal
+equation string, while `addition_carry`/`subtraction_borrow` stacked theirs in
+column form via `ColumnArithmetic`. Added `StackedEquation.jsx`, a lighter
+column-stack (no annotation row, no answer row, no block manipulative) reusing
+`ColumnArithmetic`'s CSS, so every skill now stacks its equation. Manipulatives
+are unchanged: `TenFrame` still backs `addition_no_carry`, `subtraction_no_borrow`
+still has none, and the two regrouping skills keep their full block manipulative.
+Verified live across all four skills via seeded profiles.
+
 ## 2026-09-17 — Backend-restart recovery now asks before reinstalling a stale session
 
 A backend restart wipes the in-memory session store, but the browser's cached

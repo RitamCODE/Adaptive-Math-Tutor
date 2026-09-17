@@ -78,6 +78,7 @@ adaptive-math-tutor/
   frontend/
     (problem display, number pad, manipulative canvas, skill map, XP/streak)
     src/components/ColumnArithmetic.jsx  # stacked equation + blocks in one grid
+    src/components/StackedEquation.jsx   # stacked equation, no blocks, for the two non-regrouping skills
     src/lib/columnBoard.js   # pure board state: digits, places, borrow/carry
     src/lib/remediation.js   # bandFromMastery(): which remediation a wrong answer earns
     src/lib/copy.js          # sentence-safe cap for the LLM narrative copy limits
@@ -325,11 +326,11 @@ The equation is pinned above the manipulative area and sticks to the top of the 
 
 ### Column arithmetic
 
-`addition_carry` and `subtraction_borrow` render the equation **stacked in column form** rather than as the horizontal question string, with the block columns directly beneath their own digit columns. The equation grid and the block grid share one `grid-template-columns`, which is what makes that alignment structural rather than eyeballed — do not give one of them a template the other lacks. The equation grid is sticky and rendered whether or not the blocks are open, so the numerals never need scrolling to.
+All four skills render the equation **stacked in column form** rather than as the horizontal question string. `addition_carry` and `subtraction_borrow` do this via `ColumnArithmetic.jsx`, with the block columns directly beneath their own digit columns. The equation grid and the block grid share one `grid-template-columns`, which is what makes that alignment structural rather than eyeballed — do not give one of them a template the other lacks. The equation grid is sticky and rendered whether or not the blocks are open, so the numerals never need scrolling to.
 
 Work runs **right to left, one active column at a time**; other columns are dimmed and take no pointers. Regrouping is one mechanic in two directions — ten ones bundling into a ten, one ten breaking into ten ones — so carrying and borrowing are visibly the same event. Borrowing across a zero is two student-caused steps (hundreds into tens, then tens into ones), never one that reaches past the empty column. The pure board logic lives in `frontend/src/lib/columnBoard.js`, separate from the component, so it can be reasoned about and checked on its own.
 
-The other two skills keep the plain horizontal equation and their existing widgets.
+`addition_no_carry` and `subtraction_no_borrow` never regroup, so they stack via the lighter `StackedEquation.jsx` instead: the same digit-column layout and CSS, but no annotation row, no answer row, and no block manipulative — there's nothing to drag. They keep their existing widgets (`TenFrame` for `addition_no_carry`, none for `subtraction_no_borrow`).
 
 ### A manipulative never resolves the answer for the student
 

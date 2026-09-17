@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import NumberPad from "./NumberPad";
 import FeedbackBanner from "./FeedbackBanner";
 import ColumnArithmetic from "./ColumnArithmetic";
+import StackedEquation from "./StackedEquation";
 import NumberLine from "./NumberLine";
 import TenFrame from "./TenFrame";
 import { parseQuestion } from "../lib/arithmetic";
 
-// The two skills whose whole point is regrouping. For these the equation is
-// rendered in column form by ColumnArithmetic, which owns both the written
-// digits and the blocks beneath them so the two stay aligned; the other two
-// skills keep the plain horizontal equation.
+// Every skill's equation is stacked in column form. The two skills whose
+// whole point is regrouping get the full ColumnArithmetic, which owns both
+// the written digits and a block manipulative beneath them so the two stay
+// aligned; the other two skills stack the same way via StackedEquation, but
+// without blocks — they never regroup, so there's nothing to drag.
 const COLUMN_ARITHMETIC_SKILLS = new Set(["addition_carry", "subtraction_borrow"]);
 const TEN_FRAME_SKILLS = new Set(["addition_no_carry"]);
 
@@ -97,7 +99,7 @@ export default function ProblemCard({
           onInteract={markManipulativeUsed}
         />
       ) : (
-        <div className="problem-question">{problem.question}</div>
+        <StackedEquation problem={problem} />
       )}
       <div className="manipulative-canvas">
         {showTenFrame && <TenFrame problem={problem} onInteract={markManipulativeUsed} />}
