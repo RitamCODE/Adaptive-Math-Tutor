@@ -199,7 +199,9 @@ Base-10 blocks are the same primitive as bundling sticks with a different sprite
 
 On attempt 2, the manipulative opens **pre-loaded with the child's own wrong answer**.
 
-For `86 + 94 → 1017`: show 8 bundles + 6 sticks, then 9 bundles + 4 sticks. The child drags them together. The 10 loose sticks glow and refuse to sit as loose sticks. They snap into a bundle and slide to the tens column. The number under the blocks updates to 180 as it happens.
+For `86 + 94 → 1017`: show 8 bundles + 6 sticks, then 9 bundles + 4 sticks. The child drags them together. The 10 loose sticks glow and refuse to sit as loose sticks. They snap into a bundle and slide to the tens column.
+
+> **Superseded, 2026-09-16.** "The number under the blocks updates to 180 as it happens" contradicts CLAUDE.md's "a manipulative never resolves the answer for the student", which forbids a total that tallies while the student drags. What actually shipped is the per-column answer digit: each column's digit appears under the rule when that column is finished, and nothing updates mid-drag. See "Column arithmetic" in CLAUDE.md.
 
 Nobody explained the rule. The child saw why the rule exists.
 

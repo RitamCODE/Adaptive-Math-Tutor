@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { parseQuestion, toBlocks } from "../lib/arithmetic";
-import { bandFromMastery } from "../lib/remediation";
+import { bandFromMastery, isRemediatingWith } from "../lib/remediation";
 
 const PLACE_ORDER = ["hundreds", "tens", "ones"];
 const PLACE_LABEL = { hundreds: "Hundreds", tens: "Tens", ones: "Ones" };
@@ -20,8 +20,8 @@ function zeroCounts() {
 /**
  * A number-line manipulative for the four `number_line/*` misconceptions
  * (count-on, operator confusion, operand order, digit reversal). Hops are
- * grouped by place value (reusing `toBlocks`, the same helper BundlingSticks
- * uses) so a 3-digit operand still means at most 9 hops per place, not
+ * grouped by place value (via `toBlocks`, the same digit split the blocks
+ * use) so a 3-digit operand still means at most 9 hops per place, not
  * hundreds of individual unit hops.
  *
  * Unlike the blocks and the ten frame this is not a general scaffold a
@@ -33,12 +33,7 @@ function zeroCounts() {
 export default function NumberLine({ problem, feedback, mastery, onInteract }) {
   const parsed = parseQuestion(problem.question);
 
-  const isForcedDiagnostic =
-    !!feedback &&
-    feedback.correct === false &&
-    feedback.attempts_remaining === 1 &&
-    typeof feedback.visual === "string" &&
-    feedback.visual.startsWith("number_line/");
+  const isForcedDiagnostic = isRemediatingWith(feedback, "number_line/");
 
   const band = bandFromMastery(mastery ?? 0);
   // Below 0.4 the error earns an open manipulative; between 0.4 and 0.7 it is

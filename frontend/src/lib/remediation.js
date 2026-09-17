@@ -22,3 +22,23 @@ export function bandFromMastery(mastery) {
   if (mastery <= 0.7) return "offered";
   return "hint_only";
 }
+
+/**
+ * Is this feedback the attempt-2 remediation window for a given manipulative
+ * family ("base10_blocks/" or "number_line/")?
+ *
+ * The backend withholds `visual` until attempt 2 (`diagnosis.py`), and
+ * `attempts_remaining === 1` is exactly attempt 2 of 3 — so nothing can
+ * surface before a mistake, and attempt 3 (which reveals the worked answer)
+ * doesn't open a manipulative either. Shared so the widgets can't drift
+ * apart on what counts as "remediating".
+ */
+export function isRemediatingWith(feedback, visualPrefix) {
+  return (
+    !!feedback &&
+    feedback.correct === false &&
+    feedback.attempts_remaining === 1 &&
+    typeof feedback.visual === "string" &&
+    feedback.visual.startsWith(visualPrefix)
+  );
+}

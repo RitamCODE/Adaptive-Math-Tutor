@@ -8,6 +8,7 @@ import Mascot from "./components/Mascot";
 import SessionSummary from "./components/SessionSummary";
 import { playCorrectTone, playQuestComplete } from "./lib/sound";
 import { selectPraise } from "./lib/praise";
+import { capNarrative } from "./lib/copy";
 import "./App.css";
 
 // Holds { session_id, snapshot } where `snapshot` is the last full
@@ -21,12 +22,38 @@ const REACTION_DURATION_MS = 1600;
 // answered — without a display delay, the feedback for a correct answer
 // would never get a render frame of its own. These hold the just-answered
 // problem (and its praise line) on screen before `displayData` reveals the
-// next state. The mastery-moment window is longer so the async LLM
-// narrative (touchpoints 2-4, fetched via getNarrative right after) has a
-// realistic chance to resolve and be read before advancing.
+// next state.
 const ADVANCE_DELAY_MS = 1600;
-const MASTERY_ADVANCE_DELAY_MS = 4000;
-const VALID_SEEDS = ["new", "struggling", "fluent"];
+// The mastery moment does NOT use a fixed window. Its narrative (touchpoints
+// 2-4) costs up to three sequential OpenAI calls, so a fixed 4s window that
+// started at submit time left the text roughly a second of life before the
+// next problem replaced it — it flashed and vanished. Instead the card is held
+// until the narrative actually resolves, and only then does MASTERY_READ_MS
+// start, so the reading window is a reading window rather than whatever was
+// left over. NARRATIVE_WAIT_CAP_MS bounds the hold so a slow or dead API
+// degrades to the generic line instead of stalling the session.
+const MASTERY_READ_MS = 4000;
+const NARRATIVE_WAIT_CAP_MS = 6000;
+const VALID_SEEDS = ["new", "struggling", "fluent", "borrowing"];
+
+/** Resolve to the promise's value, or to null on timeout or failure. Never
+ *  rejects, and a late arrival after the cap is ignored rather than rendered
+ *  into a window that has already closed. */
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
+}
 
 function loadCachedSession() {
   try {
@@ -66,6 +93,12 @@ export default function App() {
   const problemStartRef = useRef(Date.now());
   const sessionStartRef = useRef(null);
   const advanceTimerRef = useRef(null);
+  // Identifies one submit. `problem_id` cannot do this job: a wrong answer
+  // keeps the same problem on screen, so every retry of it shares an id, and
+  // a slow narrative request issued for one attempt would merge into the
+  // next attempt's feedback. This counter is what makes a late response
+  // recognisable as stale.
+  const turnRef = useRef(0);
   const [seed] = useState(seedFromUrl);
 
   function hydrate(data) {
@@ -184,6 +217,7 @@ export default function App() {
   function handleSubmitAnswer(answer, usedManipulative) {
     const timeTakenSec = (Date.now() - problemStartRef.current) / 1000;
     const attemptNumber = sessionData.attempt_number;
+    const turnId = ++turnRef.current;
     setLoading(true);
     setError(null);
     setReaction("thinking");
@@ -191,46 +225,55 @@ export default function App() {
     submitAnswer(sessionId, answer, timeTakenSec)
       .then((data) => {
         setSessionData(data);
-        if (data.feedback.correct) {
-          const praise = selectPraise({
-            skillTag: data.feedback.skill_tag,
-            mastery: data.skill_mastery[data.feedback.skill_tag],
-            attemptNumber,
-            timeTakenSec,
-            priorAvgTimeSec: data.feedback.prior_avg_time_sec,
-            usedManipulative,
-          });
-          setFeedback({ ...data.feedback, praise });
-          const advanced = data.next_action === "advance_skill";
-          setJustAdvanced(advanced);
-          // Keep displayData (and the just-answered problem's card) on
-          // screen for a beat instead of jumping straight to whatever this
-          // turn's graph invocation already advanced to server-side.
-          clearTimeout(advanceTimerRef.current);
-          advanceTimerRef.current = setTimeout(
-            () => {
-              setDisplayData(data);
-              setLoading(false);
-            },
-            advanced ? MASTERY_ADVANCE_DELAY_MS : ADVANCE_DELAY_MS
-          );
-        } else {
+        if (!data.feedback.correct) {
           setFeedback(data.feedback);
           setJustAdvanced(false);
           setDisplayData(data);
           setLoading(false);
+          return;
         }
-        // Off the submit-to-verdict critical path: fire-and-forget, merge in
-        // whenever the narrative text resolves (it may already be cached) —
-        // while the just-answered problem's feedback banner is still the one
-        // on screen, per the delayed displayData update above.
-        getNarrative(sessionId)
-          .then((narrativeData) => {
-            setFeedback((prev) =>
-              prev && prev.problem_id === data.feedback.problem_id ? { ...prev, ...narrativeData } : prev
-            );
-          })
-          .catch(() => {});
+
+        const praise = selectPraise({
+          skillTag: data.feedback.skill_tag,
+          mastery: data.skill_mastery[data.feedback.skill_tag],
+          attemptNumber,
+          timeTakenSec,
+          priorAvgTimeSec: data.feedback.prior_avg_time_sec,
+          usedManipulative,
+        });
+        setFeedback({ ...data.feedback, praise });
+        const advanced = data.next_action === "advance_skill";
+        setJustAdvanced(advanced);
+        // Keep displayData (and the just-answered problem's card) on
+        // screen for a beat instead of jumping straight to whatever this
+        // turn's graph invocation already advanced to server-side.
+        clearTimeout(advanceTimerRef.current);
+
+        if (!advanced) {
+          // Nothing async is coming: the narrative is only ever rendered on
+          // an advance, so a plain correct answer doesn't fetch one at all.
+          advanceTimerRef.current = setTimeout(() => {
+            setDisplayData(data);
+            setLoading(false);
+          }, ADVANCE_DELAY_MS);
+          return;
+        }
+
+        // Mastery moment. The verdict is already on screen — this is off the
+        // submit-to-verdict path, so CLAUDE.md's 150ms budget is untouched —
+        // and the card is held until the narrative lands (or the cap expires)
+        // so its reading window starts when there is something to read.
+        withTimeout(getNarrative(sessionId), NARRATIVE_WAIT_CAP_MS).then((narrativeData) => {
+          if (turnRef.current !== turnId) return;
+          const capped = capNarrative(narrativeData);
+          if (capped) {
+            setFeedback((prev) => (prev ? { ...prev, ...capped } : prev));
+          }
+          advanceTimerRef.current = setTimeout(() => {
+            setDisplayData(data);
+            setLoading(false);
+          }, MASTERY_READ_MS);
+        });
       })
       .catch((err) => {
         setError(err.message);

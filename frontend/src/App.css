@@ -865,131 +865,306 @@ body {
   }
 }
 
-/* Bundling sticks */
+/* Column arithmetic: the written algorithm and the blocks in one grid */
 
-.bundling-sticks {
+.column-arithmetic {
   flex-basis: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   padding: var(--space-3);
-  border: 2px solid var(--color-locked);
+  border: 2px solid var(--color-gold-soft);
 }
 
-.bundling-sticks-header {
-  display: flex;
+/* The two grids below deliberately share this template. That is what puts a
+   block column under its own digit column: same column count, same widths,
+   same order. Never give one of them a template the other doesn't have.
+
+   The track widens when the blocks are open, because a column then has to
+   hold 48px tokens; closed, it stays tight so the digits read as one number
+   rather than as digits scattered across the card. Both grids read the same
+   custom property, so they widen together and stay aligned. */
+.column-arithmetic {
+  --ca-track-max: 3.25rem;
+}
+
+.column-arithmetic-open {
+  --ca-track-max: 200px;
+}
+
+.ca-equation,
+.ca-blocks {
+  display: grid;
+  grid-template-columns: auto repeat(var(--ca-cols), minmax(0, 1fr));
+  gap: 0.25rem var(--space-1);
   align-items: center;
-  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
+  /* Tracks share the width equally but the grid itself is capped, so two
+     columns don't sprawl across the card while four still shrink to fit
+     rather than overflowing it. Both grids use the same formula — that is
+     what keeps a block column under its own digit. */
+  max-width: calc(var(--ca-cols) * var(--ca-track-max) + 3.5rem);
+  margin-inline: auto;
+}
+
+/* Pinned so the numerals stay on screen however tall the blocks grow
+   beneath them (CLAUDE.md: the equation is always visible). */
+.ca-equation {
+  position: sticky;
+  top: var(--stats-bar-h);
+  z-index: 2;
+  background: var(--color-surface);
+  padding-block: var(--space-1);
+}
+
+.ca-digit {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
   font-weight: 700;
+  text-align: center;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The digit this column lent from, crossed out in the usual way. */
+.ca-digit-struck {
+  text-decoration: line-through;
+  text-decoration-thickness: 3px;
+  text-decoration-color: var(--color-coral);
   color: var(--color-ink-soft);
 }
 
-.bundling-sticks-toggle {
-  min-height: 48px;
-  padding: 0.4rem 1rem;
-  border-radius: 999px;
-  border: none;
-  background: var(--color-teal-soft);
-  color: #145b52;
+/* The regrouping mark: the borrowed-into value, or the carried 1. */
+.ca-annot {
+  min-height: 1.4rem;
+  text-align: center;
+  font-size: 1rem;
   font-weight: 700;
-  cursor: pointer;
+  color: var(--color-coral);
+  font-variant-numeric: tabular-nums;
 }
 
-.bundling-sticks-canvas {
+.ca-sign {
+  font-size: clamp(1.25rem, 3vw, 1.75rem);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  text-align: right;
+  padding-right: var(--space-1);
+  min-width: 2.5rem;
+}
+
+.ca-row-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ca-rule {
+  grid-column: 1 / -1;
+  height: 0;
+  border-top: 3px solid var(--color-ink);
+  margin-block: 0.15rem;
+}
+
+.ca-answer {
+  min-height: 2.5rem;
+  color: var(--color-teal);
+}
+
+/* A digit only exists once the student has finished its column, so the
+   arrival is worth a beat of its own. */
+.ca-answer-filled {
+  animation: ca-answer-in 320ms ease-out;
+}
+
+@keyframes ca-answer-in {
+  from {
+    opacity: 0;
+    transform: translateY(-40%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ca-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  touch-action: none;
-  min-width: 0;
-  /* Backstop only — the rules above are what make the widest realistic
-     problem (999 + 999, nine tokens in every place of both operands) wrap
-     inside the card. If anything ever does exceed it, it scrolls here
-     rather than dragging the whole page sideways. */
-  overflow-x: auto;
-}
-
-.bundling-sticks-canvas.animating {
-  opacity: 0.9;
-}
-
-.stick-pile,
-.stick-workspace,
-.stick-trash {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 96px;
-  /* Without this a flex item's automatic minimum size is its content's
-     minimum, so a pile full of tokens could push the card wider than the
-     viewport instead of wrapping inside it. */
-  min-width: min(96px, 100%);
-}
-
-.stick-pile-label {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--color-ink-soft);
-}
-
-.stick-workspace {
-  flex-direction: row;
+  align-items: center;
   gap: var(--space-2);
 }
 
-.stick-column {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-width: 64px;
-  flex: 1 1 64px;
+.ca-toggle {
+  min-height: 48px;
+  padding: 0 var(--space-3);
+  border: 2px solid var(--color-teal);
+  border-radius: 999px;
+  background: var(--color-teal-soft);
+  color: #145b52;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
 }
 
-.stick-column-label {
-  font-size: 0.8rem;
+.ca-status {
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--color-ink-soft);
-  /* "Hundreds · 9" is a few pixels wider than the 64px column floor, which
-     clipped the count. Let it wrap rather than widen the column. */
+}
+
+.ca-blocks {
+  touch-action: none;
+  /* Bins size to their contents rather than stretching to the tallest in the
+     row: a tall empty box reads as somewhere you could drop something, and
+     only the live column accepts drops. */
+  align-items: start;
+}
+
+.ca-blocks.animating {
+  opacity: 0.95;
+}
+
+.ca-place {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
   overflow-wrap: anywhere;
 }
 
-.stick-column-tokens {
+/* Which column is live is said in words as well as in colour, per
+   CLAUDE.md: state is never signalled by colour alone. */
+.ca-place.ca-col-active::after {
+  content: " · now";
+  color: var(--color-teal);
+}
+
+.ca-place.ca-col-lending::after {
+  content: " · lend one";
+  color: var(--color-coral);
+}
+
+.ca-place.ca-col-done::after {
+  content: " · done";
+  color: var(--color-ink-soft);
+}
+
+.ca-bin {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.25rem;
-  min-height: 48px;
+  min-height: 56px;
   padding: 0.25rem;
   border-radius: var(--radius-md);
   background: var(--color-bg);
-}
-
-.stick-column-workspace {
   border: 2px dashed var(--color-locked);
-  border-radius: var(--radius-md);
-  padding: 0.25rem;
-  transition: box-shadow 150ms ease;
 }
 
-.stick-column-glow .stick-column-tokens,
-.stick-column-snap .stick-column-tokens {
+.ca-bin-take {
+  border-style: solid;
+  border-color: var(--color-coral-soft);
+}
+
+.ca-bin-work {
+  border-color: var(--color-teal);
+}
+
+/* Only the live column (and, while borrowing, the one lending to it) takes
+   pointers. The rest are visibly out of play, which is what stops a stray
+   drop from looking like something the app did on its own. */
+.ca-col-waiting {
+  opacity: 0.4;
+}
+
+.ca-col-active {
+  border-color: var(--color-teal);
+  box-shadow: 0 0 0 3px rgba(47, 182, 163, 0.18);
+}
+
+.ca-col-lending {
+  animation: ca-lend-invite 1.4s ease-in-out infinite;
+}
+
+.ca-col-done {
+  opacity: 0.75;
+  background: var(--color-teal-soft);
+}
+
+@keyframes ca-lend-invite {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 111, 89, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 111, 89, 0.3);
+  }
+}
+
+/* Glow, then snap — the same two beats for bundling up and breaking down. */
+.ca-glow {
   box-shadow: 0 0 0 4px rgba(245, 166, 35, 0.35);
 }
 
-.stick-trash {
-  justify-content: flex-start;
+.ca-snap {
+  box-shadow: 0 0 0 8px rgba(245, 166, 35, 0.55);
+  transform: scale(1.03);
 }
 
-.stick-trash-remaining {
+.ca-receiving {
+  box-shadow: 0 0 0 6px rgba(47, 182, 163, 0.4);
+}
+
+.ca-pad {
+  flex-basis: 100%;
   min-height: 48px;
-  min-width: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-1);
+  border: 3px dashed var(--color-coral);
+  border-radius: var(--radius-md);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-incorrect-ink);
+  background: var(--color-coral-soft);
+}
+
+/* One slot per unit to take away. Filling one is the receipt: the piece
+   stays visible where it went, so a removal can never read as something
+   that happened on its own. */
+.ca-slot {
+  min-width: 48px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 2px dashed var(--color-coral);
   border-radius: var(--radius-md);
-  padding: var(--space-2);
-  font-size: 0.85rem;
-  color: var(--color-ink-soft);
-  text-align: center;
+  opacity: 0.55;
 }
+
+.ca-slot-filled {
+  border-style: solid;
+  background: var(--color-coral-soft);
+  opacity: 1;
+}
+
+.ca-bin-count {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+
+/* --- Tokens, shared by every bin --- */
 
 .stick-token,
 .stick-token-static {
@@ -1009,7 +1184,8 @@ body {
    box keeps its size and only the artwork inside it is constrained. */
 .stick-svg,
 .bundle-svg,
-.flat-svg {
+.flat-svg,
+.cube-svg {
   max-width: 48px;
   max-height: 48px;
   width: auto;
@@ -1059,10 +1235,6 @@ body {
   opacity: 0.6;
 }
 
-.bundle-invites-borrow {
-  animation: bundle-invite 1.4s ease-in-out infinite;
-}
-
 .token-ghost {
   position: fixed;
   top: 0;
@@ -1076,15 +1248,6 @@ body {
   display: block;
 }
 
-@keyframes bundle-invite {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 111, 89, 0);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(255, 111, 89, 0.25);
-  }
-}
 
 /* Number line */
 
@@ -1378,13 +1541,13 @@ body {
 /* Below 0.4 a wrong answer opens the blocks outright. Between 0.4 and 0.7 it
    highlights them instead — visible, named, one tap away, but the student
    chooses. Above 0.7 neither class applies and the hint stands alone. */
-.bundling-sticks-offered,
+.column-arithmetic-offered,
 .number-line-offered {
   border-color: var(--color-teal);
   box-shadow: 0 0 0 3px rgba(47, 182, 163, 0.18);
 }
 
-.bundling-sticks-offered .bundling-sticks-toggle,
+.column-arithmetic-offered .ca-toggle,
 .number-line-offered .number-line-toggle {
   background: var(--color-teal);
   color: white;

@@ -77,7 +77,10 @@ adaptive-math-tutor/
       test_difficulty_ladder.py [new]
   frontend/
     (problem display, number pad, manipulative canvas, skill map, XP/streak)
+    src/components/ColumnArithmetic.jsx  # stacked equation + blocks in one grid
+    src/lib/columnBoard.js   # pure board state: digits, places, borrow/carry
     src/lib/remediation.js   # bandFromMastery(): which remediation a wrong answer earns
+    src/lib/copy.js          # sentence-safe cap for the LLM narrative copy limits
   docs/
     revision-plan.md
     CHECKLIST.md
@@ -320,9 +323,19 @@ A manipulative — the base-ten blocks, the ten frame, the number line — is he
 
 The equation is pinned above the manipulative area and sticks to the top of the problem card, so the numerals never require scrolling to during a problem, however tall the manipulative grows beneath them. It keeps full prominence whether or not a manipulative is present.
 
+### Column arithmetic
+
+`addition_carry` and `subtraction_borrow` render the equation **stacked in column form** rather than as the horizontal question string, with the block columns directly beneath their own digit columns. The equation grid and the block grid share one `grid-template-columns`, which is what makes that alignment structural rather than eyeballed — do not give one of them a template the other lacks. The equation grid is sticky and rendered whether or not the blocks are open, so the numerals never need scrolling to.
+
+Work runs **right to left, one active column at a time**; other columns are dimmed and take no pointers. Regrouping is one mechanic in two directions — ten ones bundling into a ten, one ten breaking into ten ones — so carrying and borrowing are visibly the same event. Borrowing across a zero is two student-caused steps (hundreds into tens, then tens into ones), never one that reaches past the empty column. The pure board logic lives in `frontend/src/lib/columnBoard.js`, separate from the component, so it can be reasoned about and checked on its own.
+
+The other two skills keep the plain horizontal equation and their existing widgets.
+
 ### A manipulative never resolves the answer for the student
 
-The base-ten blocks show the assembled place values ("Tens · 9", "Ones · 7") and the bundling animation — ten ones snapping into a ten is the pedagogically valuable part and stays. They do **not** display a running numeric total: a readout that tallies to a finished number while the student drags turns the number pad into copying rather than computing. The student reads the place values and enters the number themselves.
+The base-ten blocks show the assembled place values and the bundling animation — ten ones snapping into a ten is the pedagogically valuable part and stays. They do **not** display a running numeric total: a readout that tallies to a finished number while the student drags turns the number pad into copying rather than computing. The student reads the place values and enters the number themselves.
+
+**The per-column answer digit is the one exception**, on the same grounds as the number line's readout below: it is not a tally the app keeps, it is the result of work the student has already finished. In the column layout (see "Column arithmetic"), a column's answer digit appears under the rule only once that column is resolved — every take-away slot filled, or both addend piles emptied — and a column the student has not worked has no digit at all. Nothing anywhere updates mid-drag, and the student still types the whole number on the pad.
 
 The number line is the deliberate exception. Its rail carries no tick labels, so its position readout is the only number on the widget, and landing on a position is what a number line *is*.
 
@@ -335,7 +348,7 @@ The number line is the deliberate exception. Its rail carries no tick labels, so
 - Primary target is **tablet landscape**, roughly 1024 x 768, scaling up to laptop. Phone portrait is out of scope: a manipulative canvas plus a number pad cannot be usable at that width.
 - Error state is never signaled by color alone.
 - Session state snapshots to `localStorage` every turn and rehydrates on load.
-- A `?seed=` URL parameter loads one of three fixed profiles (`new`, `struggling`, `fluent`) for demo and testing.
+- A `?seed=` URL parameter loads one of four fixed profiles (`new`, `struggling`, `fluent`, `borrowing`) for demo and testing. The first three are the demo path; `borrowing` exists because `subtraction_borrow` is otherwise ~12 correct answers from a fresh start, which made the borrow flow effectively untestable in a browser and let a pile of defects ship. It is a test affordance, not a demo profile.
 
 ### Copy limits, enforced by truncation in code
 

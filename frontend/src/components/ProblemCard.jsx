@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import NumberPad from "./NumberPad";
 import FeedbackBanner from "./FeedbackBanner";
-import BundlingSticks from "./BundlingSticks";
+import ColumnArithmetic from "./ColumnArithmetic";
 import NumberLine from "./NumberLine";
 import TenFrame from "./TenFrame";
 
-const BUNDLING_STICKS_SKILLS = new Set(["addition_carry", "subtraction_borrow"]);
+// The two skills whose whole point is regrouping. For these the equation is
+// rendered in column form by ColumnArithmetic, which owns both the written
+// digits and the blocks beneath them so the two stay aligned; the other two
+// skills keep the plain horizontal equation.
+const COLUMN_ARITHMETIC_SKILLS = new Set(["addition_carry", "subtraction_borrow"]);
 const TEN_FRAME_SKILLS = new Set(["addition_no_carry"]);
 
 const CONFETTI_ANGLES = [
@@ -47,7 +51,7 @@ export default function ProblemCard({
 
   const feedbackForThisProblem = feedback && feedback.problem_id === problem.problem_id ? feedback : null;
   const mastery = skillProgress?.find((entry) => entry.skill === problem.skill_tag)?.mastery ?? 0;
-  const showBundlingSticks = BUNDLING_STICKS_SKILLS.has(problem.skill_tag);
+  const showColumnArithmetic = COLUMN_ARITHMETIC_SKILLS.has(problem.skill_tag);
   const showTenFrame = TEN_FRAME_SKILLS.has(problem.skill_tag);
 
   return (
@@ -66,17 +70,20 @@ export default function ProblemCard({
       {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
       {/* The equation is pinned above the manipulative area and sticks to the
           top of the card, so the numerals never need scrolling to during a
-          problem — however tall the blocks grow underneath them. */}
-      <div className="problem-question">{problem.question}</div>
+          problem — however tall the blocks grow underneath them. In column
+          form the equation and the blocks are one widget precisely so they
+          share a grid; elsewhere it is the plain question string. */}
+      {showColumnArithmetic ? (
+        <ColumnArithmetic
+          problem={problem}
+          feedback={feedbackForThisProblem}
+          mastery={mastery}
+          onInteract={markManipulativeUsed}
+        />
+      ) : (
+        <div className="problem-question">{problem.question}</div>
+      )}
       <div className="manipulative-canvas">
-        {showBundlingSticks && (
-          <BundlingSticks
-            problem={problem}
-            feedback={feedbackForThisProblem}
-            mastery={mastery}
-            onInteract={markManipulativeUsed}
-          />
-        )}
         {showTenFrame && <TenFrame problem={problem} onInteract={markManipulativeUsed} />}
         <NumberLine
           problem={problem}
