@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-09-16 — Digit-width ladder decoupled from BKT mastery; narrative word budgets
+
+A student's first correct answer on a skill lifted BKT mastery from 0.3 to ~0.9 (by
+design — see `bkt.py`), and digit-width was reading that raw mastery value straight into
+a 3-bucket table, so problems jumped from 1-digit to 3-digit with no 2-digit step.
+Digit-width is now its own sustained-run ladder per skill (`_difficulty_ladder.py`),
+entirely independent of mastery: 3 consecutive correct answers advance most tiers, and
+the narrowest (1-digit) tier additionally escalates trivial-then-non-trivial across its
+2-correct gate. Separately, `mastery_moment_narrative`/`effort_reward_narrative`/
+`boss_battle_narrative` now state an explicit 20-word budget in their prompts (mirroring
+the word-problem touchpoint), since the missing budget was letting the model write two
+sentences and `copy.js`'s truncation silently drop the specific one, leaving only generic
+praise on screen.
+
+## 2026-09-16 — Column arithmetic: the blocks and the written digits become one thing
+
+Browser testing of subtraction found the borrow flow to be a dead end. The mechanic existed
+— `runTransition("unbundle", …)` is the carry animation run backwards, and was already wired
+for subtraction — but the only way to reach it was dragging a tens bundle onto the ones
+*column*, cued by nothing but a pulsing border. The take-away target was a caption
+(`"3 tens, 8 ones"`), so removing a piece deleted a phrase rather than changing an object,
+which made the student's own actions read as things the app had done for them. Replaced
+`BundlingSticks` with `ColumnArithmetic`: the equation is stacked in column form and the
+block columns sit under their own digit columns (one shared `grid-template-columns`), work
+runs right to left one column at a time, the subtrahend is drop-slots that fill as pieces
+land in them, and a short column offers a labelled pad that breaks a block open where the
+student can watch it. Each column's answer digit appears under the rule when that column is
+finished — the per-column exception now recorded in CLAUDE.md, since the digits are results
+the student produced, not a tally the app keeps. Addition uses the same grid. Pure board
+logic split into `lib/columnBoard.js` and swept over every problem the curriculum can
+generate (426k cases, including borrow-across-zero, which chains two visible steps).
+
+Also: the mastery narrative no longer flashes. It costs up to three serial OpenAI calls, so
+merging it into a fixed 4s window that started at submit left it about a second of life; the
+card is now held until it resolves (capped at 6s) and the reading window starts from there,
+the fetch only fires on an advance, a per-turn id replaces the `problem_id` merge guard that
+aliased across retries of the same problem, and the 20-word cap CLAUDE.md requires is
+enforced on sentence boundaries. Praise strategy branch was `"Nice use of the tool!"` — five
+words against a four-word cap, so it shipped as `"Nice use of the"`; the literal is now
+four words and `capWords` warns in dev when it truncates. Added `?seed=borrowing`, without
+which `subtraction_borrow` is ~12 correct answers from a fresh start.
+
 ## 2026-09-16 — Sustained mastery, skill groups, and manipulatives as remediation
 
 Three connected defects made the app mis-describe what a student knows. With the project's

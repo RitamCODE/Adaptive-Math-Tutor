@@ -61,11 +61,47 @@ from backend.nodes.diagnosis import grade_and_diagnose as pure_grade_and_diagnos
 from backend.nodes.engagement import decide_engagement as pure_decide_engagement
 from backend.nodes.problem_gen import generate_problem as pure_generate_problem
 from backend.nodes.remediation import build_remediation as pure_build_remediation
+from backend.skills._arithmetic import parse_operands
+from backend.skills._difficulty_ladder import NARROWEST_TIER_SKILLS, WIDTH_LADDER, advance_digit_level
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH
 
+# Digit-width no longer comes from raw BKT mastery (see _difficulty_ladder.py's
+# module docstring for why). generate_problem's `difficulty: float` parameter
+# is kept unchanged per CLAUDE.md's node spec, but it now just encodes which
+# of bucket()'s three thresholds a skill's ladder tier should resolve to, so
+# bucket() and every skill's own _WIDTH_BY_BUCKET table keep working
+# unchanged. A flat tier-index -> float table doesn't work here: a 2-tier
+# skill's (addition_carry/subtraction_borrow) tier 1 is its own top/widest
+# tier and must resolve to "hard", not "medium" — so the tier is placed
+# relative to its own skill's ladder length instead.
+_BUCKET_DIFFICULTY = {"easy": 0.2, "medium": 0.5, "hard": 0.8}
 
-def _difficulty_for(mastery: dict[str, float], skill: str) -> float:
-    return mastery.get(skill, BKTParams().p_init)
+
+def _difficulty_for_level(digit_level: dict[str, int], skill: str) -> float:
+    ladder = WIDTH_LADDER.get(skill, [1, 2, 3])
+    tier = max(0, min(digit_level.get(skill, 0), len(ladder) - 1))
+    if len(ladder) <= 1 or tier == len(ladder) - 1:
+        bucket_name = "hard"
+    elif tier == 0:
+        bucket_name = "easy"
+    else:
+        bucket_name = "medium"
+    return _BUCKET_DIFFICULTY[bucket_name]
+
+
+def _difficulty_for(state: SessionState, skill: str) -> float:
+    return _difficulty_for_level(state.digit_level, skill)
+
+
+def _combo_hint_for(state: SessionState, skill: str) -> dict | None:
+    """Only meaningful for the two skills whose narrowest tier is 1-digit,
+    and only while a skill is still at that tier (digit_level 0). Tells
+    generate_problem whether the next 1-digit problem should be trivial (an
+    operand is 0) or non-trivial."""
+    if skill not in NARROWEST_TIER_SKILLS or state.digit_level.get(skill, 0) != 0:
+        return None
+    want_trivial = state.digit_level_run.get(skill, 0) == 0
+    return {"seen": state.seen_combos.get(skill, []), "want_trivial": want_trivial}
 
 
 def _is_signal(response: LastResponse) -> bool:
@@ -86,7 +122,7 @@ def generate_problem_node(state: SessionState) -> dict:
         if state.current_problem is not None
         else select_next_skill(state, DEFAULT_SKILL_GRAPH)
     )
-    problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
+    problem = pure_generate_problem(skill, _difficulty_for(state, skill), combo_hint=_combo_hint_for(state, skill))
     return {
         "current_problem": problem, "next_action": "new_problem",
         "attempt_number": 1, "attempt_history": [],
@@ -154,8 +190,8 @@ def update_mastery_node(state: SessionState) -> dict:
     route_after_engagement runs, so the router sees this turn's count.
     """
     updates: dict = {}
+    skill = state.current_problem.skill_tag
     if not (state.attempt_history and state.attempt_history[-1][1] == "digit_reversal"):
-        skill = state.current_problem.skill_tag
         updated_mastery = bkt_update_mastery(
             state.skill_mastery, skill, state.last_response.correct, BKTParams()
         )
@@ -174,6 +210,24 @@ def update_mastery_node(state: SessionState) -> dict:
             **state.mastery_run,
             skill: run + 1 if updated_mastery[skill] >= MASTERY_THRESHOLD else 0,
         }
+
+    # Digit-width tracking is a separate axis from BKT mastery (see
+    # _difficulty_ladder.py), so unlike the block above it runs unconditionally
+    # on every signal-bearing answer, including a digit_reversal one.
+    combo = None
+    if skill in NARROWEST_TIER_SKILLS:
+        a, _op, b = parse_operands(state.current_problem.question)
+        combo = (a, b)
+    updates.update(
+        advance_digit_level(
+            skill=skill,
+            digit_level=state.digit_level,
+            digit_level_run=state.digit_level_run,
+            seen_combos=state.seen_combos,
+            correct=state.last_response.correct,
+            combo=combo,
+        )
+    )
 
     if (
         state.pending_resurface is not None
@@ -200,7 +254,9 @@ def advance_skill_node(state: SessionState) -> dict:
     separately unit-tested pure functions; only the *wiring* combines them.
     """
     new_skill = select_next_skill(state, DEFAULT_SKILL_GRAPH)
-    problem = pure_generate_problem(new_skill, _difficulty_for(state.skill_mastery, new_skill))
+    problem = pure_generate_problem(
+        new_skill, _difficulty_for(state, new_skill), combo_hint=_combo_hint_for(state, new_skill)
+    )
     return {
         "current_problem": problem, "next_action": "advance_skill", "last_response": None,
         "attempt_number": 1, "attempt_history": [],
@@ -211,7 +267,7 @@ def advance_skill_node(state: SessionState) -> dict:
 def new_problem_node(state: SessionState) -> dict:
     """Correct answer, mastery still below threshold: same skill, new problem."""
     skill = state.current_problem.skill_tag
-    problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
+    problem = pure_generate_problem(skill, _difficulty_for(state, skill), combo_hint=_combo_hint_for(state, skill))
     return {
         "current_problem": problem, "next_action": "new_problem", "last_response": None,
         "attempt_number": 1, "attempt_history": [],
@@ -239,7 +295,7 @@ def demote_skill_node(state: SessionState) -> dict:
     skill = state.current_problem.skill_tag
     prereqs = DEFAULT_SKILL_GRAPH.prerequisites_of(skill)
     if not prereqs:
-        problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
+        problem = pure_generate_problem(skill, _difficulty_for(state, skill), combo_hint=_combo_hint_for(state, skill))
         return {
             "current_problem": problem, "next_action": "new_problem", "last_response": None,
             "attempt_number": 1, "attempt_history": [],
@@ -247,7 +303,9 @@ def demote_skill_node(state: SessionState) -> dict:
             }
 
     target = prereqs[0]
-    problem = pure_generate_problem(target, _difficulty_for(state.skill_mastery, target))
+    problem = pure_generate_problem(
+        target, _difficulty_for(state, target), combo_hint=_combo_hint_for(state, target)
+    )
     updates = {
         "current_problem": problem, "next_action": "demote_skill", "last_response": None,
         "attempt_number": 1, "attempt_history": [],
@@ -270,7 +328,7 @@ def resurface_skill_node(state: SessionState) -> dict:
     would incorrectly fire the mastery-moment LLM narrative.
     """
     skill = state.pending_resurface
-    problem = pure_generate_problem(skill, _difficulty_for(state.skill_mastery, skill))
+    problem = pure_generate_problem(skill, _difficulty_for(state, skill), combo_hint=_combo_hint_for(state, skill))
     return {
         "current_problem": problem, "next_action": "new_problem", "last_response": None,
         "attempt_number": 1, "attempt_history": [],

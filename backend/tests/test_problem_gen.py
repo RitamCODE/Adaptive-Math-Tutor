@@ -5,6 +5,7 @@ import pytest
 from backend.nodes.problem_gen import generate_problem
 from backend.skills import addition_carry, addition_no_carry, subtraction_borrow, subtraction_no_borrow
 from backend.skills._arithmetic import has_any_borrow, has_any_carry, parse_operands
+from backend.skills._difficulty_ladder import is_trivial
 
 DIFFICULTIES = [0.2, 0.5, 0.8]  # easy, medium, hard buckets
 
@@ -57,3 +58,34 @@ def test_generate_problem_node_dispatches_correctly(skill_tag, difficulty):
 def test_generate_problem_rejects_unknown_skill():
     with pytest.raises(ValueError):
         generate_problem("multiplication_basic", 0.5)
+
+
+@pytest.mark.parametrize(
+    "skill_tag,generate_fn,op",
+    [
+        (addition_no_carry.SKILL_TAG, addition_no_carry.generate, "+"),
+        (subtraction_no_borrow.SKILL_TAG, subtraction_no_borrow.generate, "-"),
+    ],
+)
+def test_combo_hint_respects_trivial_request_and_avoids_seen(skill_tag, generate_fn, op):
+    rng = random.Random(7)
+    seen = [[5, 0], [3, 0]]
+    problem = generate_fn(0.2, rng=rng, combo_hint={"seen": seen, "want_trivial": True})
+
+    assert problem.skill_tag == skill_tag
+    a, actual_op, b = parse_operands(problem.question)
+    assert actual_op == op
+    assert [a, b] not in seen
+    assert is_trivial(skill_tag, (a, b))  # trivial combo requested
+
+
+@pytest.mark.parametrize(
+    "generate_fn",
+    [addition_no_carry.generate, subtraction_no_borrow.generate],
+)
+def test_combo_hint_ignored_when_none(generate_fn):
+    # difficulty=0.8 buckets to "hard" (3-digit), so combo_hint (1-digit only)
+    # must be ignored regardless of whether it's provided.
+    problem = generate_fn(0.8, rng=random.Random(3), combo_hint={"seen": [], "want_trivial": True})
+    a, _op, b = parse_operands(problem.question)
+    assert max(len(str(a)), len(str(b))) == 3

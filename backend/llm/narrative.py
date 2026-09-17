@@ -47,6 +47,8 @@ _load_dotenv()
 _MODEL = os.environ.get("OPENAI_NARRATIVE_MODEL", "gpt-4o-mini")
 _TIMEOUT_SEC = 5.0
 _MAX_WORD_PROBLEM_WORDS = 20
+_MAX_NARRATIVE_WORDS = 20  # mirrors frontend/src/lib/copy.js's MAX_NARRATIVE_WORDS —
+                           # shared by mastery/effort/boss-battle narratives
 
 
 def _word_count(text: str) -> int:
@@ -107,6 +109,31 @@ def _complete(system: str, user: str, max_tokens: int = 120) -> str | None:
         return None
 
 
+def _complete_within_budget(system: str, user: str, max_words: int) -> str | None:
+    """Shared choke point for every word-budgeted narrative in this module.
+
+    An unconstrained model will happily write two sentences — a generic
+    opener plus the actually-specific detail — that together overrun the
+    caller's word cap; frontend/src/lib/copy.js then truncates on sentence
+    boundaries and keeps only the generic first half. Stating the exact
+    budget in the prompt up front (and regenerating once with a nudge if the
+    first attempt still overruns) means the model's own sentence already
+    fits, so truncation rarely has to do this trimming at all.
+    """
+    result = _complete(system, user)
+    if result is None or _word_count(result) <= max_words:
+        return result
+
+    retry_user = (
+        f"{user}\n\nYour previous attempt was too long: \"{result}\". "
+        f"Rewrite it in {max_words} words or fewer."
+    )
+    result = _complete(system, retry_user)
+    if result is None or _word_count(result) > max_words:
+        return None
+    return result
+
+
 def flavor_word_problem(
     question: str, correct_answer: int, skill_tag: str, difficulty: float
 ) -> str | None:
@@ -116,9 +143,7 @@ def flavor_word_problem(
     returns None. Constrained hard per CLAUDE.md's copy-limits table and
     revision-plan Part 7.4: an unconstrained model will happily produce a
     30-word sentence with a word a first-grader can't decode, and then the
-    app is measuring reading, not math. If the first attempt overruns the
-    20-word cap, regenerate once with a nudge before giving up (never a
-    retry loop).
+    app is measuring reading, not math.
     """
     system = (
         "You write a single short, fun one-line word-problem story for a "
@@ -131,39 +156,47 @@ def flavor_word_problem(
         "the answer. Output only the one-line story, no preamble."
     )
     user = f"Skill: {skill_tag}\nDifficulty: {difficulty}\nProblem: {question}"
-    result = _complete(system, user)
-    if result is None or _word_count(result) <= _MAX_WORD_PROBLEM_WORDS:
-        return result
-
-    retry_user = (
-        f"{user}\n\nYour previous attempt was too long: \"{result}\". "
-        f"Rewrite it in {_MAX_WORD_PROBLEM_WORDS} words or fewer."
-    )
-    result = _complete(system, retry_user)
-    if result is None or _word_count(result) > _MAX_WORD_PROBLEM_WORDS:
-        return None
-    return result
+    return _complete_within_budget(system, user, _MAX_WORD_PROBLEM_WORDS)
 
 
 def mastery_moment_narrative(
-    skill: str, misconceptions: list[Misconception], attempt_count: int
+    skill: str,
+    misconceptions: list[Misconception],
+    attempt_count: int,
+    avg_time_sec: float | None = None,
 ) -> str | None:
     """Touchpoint 2: name the specific pattern the student overcame on `skill`.
 
-    Fires once, on the advance_skill transition.
+    Fires once, on the advance_skill transition. Branches on whether there's
+    a misconception to name *before* building the prompt: a clean run with
+    nothing logged gets asked to call out fluency/speed from real attempt/time
+    data instead, rather than being handed a placeholder like "none logged"
+    and left to write generic filler around it.
     """
-    bug_types = ", ".join(sorted({m.bug_type for m in misconceptions})) or "none logged"
+    bug_types = ", ".join(sorted({m.bug_type for m in misconceptions}))
     system = (
         "You write one or two encouraging sentences for a K-5 math student "
-        "who just mastered a skill, naming the specific mistake pattern "
-        "they overcame. Be concrete and specific, not generic praise."
+        f"who just mastered a skill. Hard constraint: {_MAX_NARRATIVE_WORDS} "
+        "words maximum. Be concrete and specific, not generic praise."
     )
-    user = (
-        f"Skill just mastered: {skill}\n"
-        f"Attempts taken: {attempt_count}\n"
-        f"Misconception patterns hit along the way: {bug_types}"
-    )
-    return _complete(system, user)
+    if bug_types:
+        system += " Name the specific mistake pattern they overcame, using the pattern name given."
+        user = (
+            f"Skill just mastered: {skill}\n"
+            f"Attempts taken: {attempt_count}\n"
+            f"Misconception patterns hit along the way: {bug_types}"
+        )
+    else:
+        system += (
+            " This student had a clean run with no mistakes logged, so instead of generic "
+            "congratulations, call out their fluency or speed using the actual attempt count "
+            "and time given."
+        )
+        user = f"Skill just mastered: {skill}\nAttempts taken: {attempt_count}\n"
+        if avg_time_sec is not None:
+            user += f"Average time per attempt: {avg_time_sec:.1f} seconds\n"
+        user += "No misconceptions were logged: this was a clean run."
+    return _complete_within_budget(system, user, _MAX_NARRATIVE_WORDS)
 
 
 def effort_reward_narrative(skill: str, attempt_count: int, avg_time_sec: float) -> str | None:
@@ -174,16 +207,17 @@ def effort_reward_narrative(skill: str, attempt_count: int, avg_time_sec: float)
     """
     system = (
         "You write one short reward-framing line for a K-5 math student who "
-        "just answered correctly. If their attempt count is high or their "
-        "average time is long, acknowledge the effort/persistence. If both "
-        "are low, praise the speed/confidence instead. One sentence only."
+        f"just answered correctly. Hard constraint: {_MAX_NARRATIVE_WORDS} words "
+        "maximum. If their attempt count is high or their average time is long, "
+        "acknowledge the effort/persistence. If both are low, praise the "
+        "speed/confidence instead. One sentence only."
     )
     user = (
         f"Skill: {skill}\n"
         f"Attempts so far on this skill: {attempt_count}\n"
         f"Average time per attempt (seconds): {avg_time_sec:.1f}"
     )
-    return _complete(system, user)
+    return _complete_within_budget(system, user, _MAX_NARRATIVE_WORDS)
 
 
 def boss_battle_narrative(skill: str) -> str | None:
@@ -194,8 +228,9 @@ def boss_battle_narrative(skill: str) -> str | None:
     """
     system = (
         "You write one short, exciting 'boss battle' framing line for a "
-        "K-5 math student about to start practicing a new skill. Name the "
-        "skill in plain, kid-friendly language. One sentence only."
+        f"K-5 math student about to start practicing a new skill. Hard "
+        f"constraint: {_MAX_NARRATIVE_WORDS} words maximum. Name the skill in "
+        "plain, kid-friendly language. One sentence only."
     )
     user = f"New skill: {skill}"
-    return _complete(system, user)
+    return _complete_within_budget(system, user, _MAX_NARRATIVE_WORDS)

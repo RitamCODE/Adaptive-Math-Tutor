@@ -1,5 +1,6 @@
 from backend.graph import app
 from backend.models.state import EngagementState, LastResponse, SessionState
+from backend.skills._arithmetic import parse_operands
 
 
 def _invoke(state: SessionState) -> SessionState:
@@ -83,3 +84,47 @@ def test_scripted_session_runs_through_one_mastery_transition():
 
     assert state.current_problem.skill_tag != starting_skill
     assert state.current_problem.skill_tag == "addition_carry"
+
+
+def _operand_width(question: str) -> int:
+    a, _op, b = parse_operands(question)
+    return max(len(str(a)), len(str(b)))
+
+
+def test_digit_width_does_not_jump_straight_to_three_digits_on_first_correct_answer():
+    """Regression test for the originally reported bug: BKT mastery jumps
+    ~0.3 -> ~0.90 on a single correct answer (see bkt.py's docstring), but
+    digit-width must not follow that jump — it advances only on its own
+    sustained-run ladder (_difficulty_ladder.py), independent of mastery."""
+    state = _invoke(_initial_state())
+    assert _operand_width(state.current_problem.question) == 1
+    assert state.skill_mastery == {}
+
+    for _ in range(4):
+        answer = state.current_problem.correct_answer
+        state = state.model_copy(
+            update={"last_response": LastResponse(answer=answer, correct=True, time_taken_sec=5.0)}
+        )
+        state = _invoke(state)
+        if state.current_problem is None or state.current_problem.skill_tag != "addition_no_carry":
+            break
+        # Mastery crosses 0.8 on the very first correct answer (well above
+        # MASTERY_THRESHOLD), yet the digit-width ladder must still hold at 1
+        # digit until its own base gate (2 escalating correct answers) is met.
+        assert state.skill_mastery["addition_no_carry"] >= 0.8
+        assert _operand_width(state.current_problem.question) <= 2
+
+
+def test_digit_width_advances_to_two_digits_after_escalating_pair():
+    state = _invoke(_initial_state())
+    assert _operand_width(state.current_problem.question) == 1
+
+    for _ in range(2):
+        answer = state.current_problem.correct_answer
+        state = state.model_copy(
+            update={"last_response": LastResponse(answer=answer, correct=True, time_taken_sec=5.0)}
+        )
+        state = _invoke(state)
+
+    assert state.digit_level["addition_no_carry"] == 1
+    assert _operand_width(state.current_problem.question) == 2

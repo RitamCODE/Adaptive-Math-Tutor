@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from backend.api import _NARRATIVE_CONTEXT, _SESSIONS, app
 from backend.logging import events
 from backend.models.bkt import MASTERY_MIN_RUN
+from backend.skills._arithmetic import parse_operands
 
 client = TestClient(app)
 
@@ -252,6 +253,20 @@ def test_seed_fluent_has_high_mastery_above_the_fading_band():
     assert body["current_problem"]["skill_tag"] == "addition_carry"
     assert body["skill_mastery"]["addition_carry"] > 0.7
     assert body["misconception_log"] == []
+
+
+def test_seed_borrowing_starts_at_three_digit_subtraction_borrow():
+    """The 'borrowing' seed's whole point is reaching multi-borrow problems
+    immediately; it now sets digit_level explicitly rather than relying on
+    mastery to imply digit-width (see _difficulty_ladder.py)."""
+    response = client.post("/sessions/seed/borrowing", json={"student_id": "seed-borrowing"})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["current_problem"]["skill_tag"] == "subtraction_borrow"
+    a, op, b = parse_operands(body["current_problem"]["question"])
+    assert op == "-"
+    assert max(len(str(a)), len(str(b))) == 3
 
 
 def test_seed_unknown_name_returns_404():

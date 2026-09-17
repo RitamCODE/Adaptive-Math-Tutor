@@ -101,6 +101,120 @@ def test_flavor_word_problem_falls_back_to_none_if_regeneration_fails(monkeypatc
     assert responses == []
 
 
+def test_mastery_moment_narrative_system_prompt_states_word_budget(monkeypatch):
+    captured = {}
+
+    def fake_complete(system, user, max_tokens=120):
+        captured["system"] = system
+        return "Short."
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    misconceptions = [
+        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
+    ]
+    narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
+
+    assert "20 words" in captured["system"]
+
+
+def test_mastery_moment_narrative_regenerates_once_on_overrun_and_succeeds(monkeypatch):
+    too_long = " ".join(["word"] * 25)
+    short = "You beat the carrying trap that used to trip you up."
+    responses = [too_long, short]
+
+    def fake_complete(system, user, max_tokens=120):
+        return responses.pop(0)
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    misconceptions = [
+        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
+    ]
+    result = narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
+
+    assert result == short
+    assert responses == []
+
+
+def test_mastery_moment_narrative_falls_back_to_none_if_regeneration_still_overruns(monkeypatch):
+    too_long = " ".join(["word"] * 25)
+
+    def fake_complete(system, user, max_tokens=120):
+        return too_long
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    misconceptions = [
+        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
+    ]
+    result = narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
+
+    assert result is None
+
+
+def test_mastery_moment_narrative_with_misconceptions_names_pattern(monkeypatch):
+    captured = {}
+
+    def fake_complete(system, user, max_tokens=120):
+        captured["system"] = system
+        captured["user"] = user
+        return "Nice work."
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    misconceptions = [
+        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now()),
+        Misconception(skill="addition_carry", bug_type="add_off_by_one", timestamp=datetime.now()),
+    ]
+    narrative.mastery_moment_narrative("addition_carry", misconceptions, 6)
+
+    assert "no_carry" in captured["user"]
+    assert "add_off_by_one" in captured["user"]
+    assert "none logged" not in captured["user"]
+    assert "clean run" not in captured["user"]
+
+
+def test_mastery_moment_narrative_clean_run_uses_fluency_branch(monkeypatch):
+    captured = {}
+
+    def fake_complete(system, user, max_tokens=120):
+        captured["system"] = system
+        captured["user"] = user
+        return "Fast and confident!"
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    narrative.mastery_moment_narrative("addition_carry", [], 3, avg_time_sec=4.2)
+
+    assert "none logged" not in captured["user"]
+    assert "clean run" in captured["user"].lower()
+    assert "3" in captured["user"]
+    assert "4.2" in captured["user"]
+    assert "fluency" in captured["system"].lower() or "speed" in captured["system"].lower()
+
+
+def test_effort_reward_narrative_system_prompt_states_word_budget(monkeypatch):
+    captured = {}
+
+    def fake_complete(system, user, max_tokens=120):
+        captured["system"] = system
+        return "Nice speed!"
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    narrative.effort_reward_narrative("addition_no_carry", 2, 3.0)
+
+    assert "20 words" in captured["system"]
+
+
+def test_boss_battle_narrative_system_prompt_states_word_budget(monkeypatch):
+    captured = {}
+
+    def fake_complete(system, user, max_tokens=120):
+        captured["system"] = system
+        return "New challenge!"
+
+    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    narrative.boss_battle_narrative("subtraction_borrow")
+
+    assert "20 words" in captured["system"]
+
+
 def test_client_wraps_with_langsmith_when_key_present(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake-key-for-test")
     client = narrative._client()

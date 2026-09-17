@@ -15,10 +15,16 @@ _GENERATORS = {
     subtraction_borrow.SKILL_TAG: subtraction_borrow.generate,
 }
 
+# Only the two skills whose narrowest tier is 1-digit accept a combo_hint —
+# the other two skills' generate() has no such parameter.
+_COMBO_HINT_SKILLS = {addition_no_carry.SKILL_TAG, subtraction_no_borrow.SKILL_TAG}
 
-def generate_problem(skill: str, difficulty: float) -> Problem:
+
+def generate_problem(skill: str, difficulty: float, *, combo_hint: dict | None = None) -> Problem:
     try:
         generator = _GENERATORS[skill]
     except KeyError:
         raise ValueError(f"unknown skill tag: {skill!r} (known: {sorted(_GENERATORS)})") from None
+    if combo_hint is not None and skill in _COMBO_HINT_SKILLS:
+        return generator(difficulty, combo_hint=combo_hint)
     return generator(difficulty)

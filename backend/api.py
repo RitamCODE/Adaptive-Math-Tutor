@@ -28,7 +28,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.graph import _difficulty_for, app as graph_app
+from backend.graph import _difficulty_for_level, app as graph_app
 from backend.llm import narrative
 from backend.logging import events
 from backend.models.bkt import is_mastered
@@ -81,6 +81,11 @@ class RestoreRequest(BaseModel):
     pending_resurface: str | None = None
     resurface_progress: int = 0
     resurfaced_skills: list[str] = []
+    # Digit-width ladder bookkeeping (backend/skills/_difficulty_ladder.py) —
+    # defaulted the same way for a snapshot cached before these fields existed.
+    digit_level: dict[str, int] = {}
+    digit_level_run: dict[str, int] = {}
+    seen_combos: dict[str, list[list[int]]] = {}
 
 
 class AnswerRequest(BaseModel):
@@ -286,6 +291,9 @@ def _install_seeded_state(
     pending_resurface: str | None = None,
     resurface_progress: int = 0,
     resurfaced_skills: list[str] | None = None,
+    digit_level: dict[str, int] | None = None,
+    digit_level_run: dict[str, int] | None = None,
+    seen_combos: dict[str, list] | None = None,
 ) -> SessionState:
     """Install a fully-formed session directly into `_SESSIONS`, without
     running it through the graph (the same "read the state back as-is"
@@ -295,7 +303,8 @@ def _install_seeded_state(
     session is immediately playable, but its `correct_answer` never has to
     pass through anything the client has touched.
     """
-    difficulty = _difficulty_for(skill_mastery, active_skill)
+    digit_level = digit_level if digit_level is not None else {}
+    difficulty = _difficulty_for_level(digit_level, active_skill)
     problem = generate_problem(active_skill, difficulty)
     state = SessionState(
         student_id=student_id,
@@ -316,6 +325,9 @@ def _install_seeded_state(
         pending_resurface=pending_resurface,
         resurface_progress=resurface_progress,
         resurfaced_skills=resurfaced_skills if resurfaced_skills is not None else [],
+        digit_level=digit_level,
+        digit_level_run=digit_level_run if digit_level_run is not None else {},
+        seen_combos=seen_combos if seen_combos is not None else {},
     )
     _SESSIONS[session_id] = state
     return state
@@ -344,6 +356,39 @@ _SEED_PROFILES: dict[str, dict] = {
         problems_completed=3,
         quest_length=16,
         active_skill="addition_carry",
+    ),
+    # Lands directly on `subtraction_borrow`, the only skill whose manipulative
+    # exercises regrouping *downwards*. It is otherwise ~12 correct answers
+    # from a fresh start and no other seed reaches it, which made the borrow
+    # flow effectively untestable in a browser — CHECKLIST.md item 52 records
+    # it being verified through a temporary harness instead, and the defects
+    # that shipped as a result are exactly the ones a real play-through finds.
+    #
+    # CLAUDE.md names three profiles; this is a fourth, added as a test and
+    # demo affordance rather than as engine behaviour (see the note there).
+    #
+    # Mastery 0.3 puts the skill in the `open` remediation band, so a wrong
+    # attempt 2 opens the blocks. Digit-width is set explicitly below rather
+    # than left to follow from mastery (see _difficulty_ladder.py): this seed
+    # starts subtraction_borrow at its own top tier (width 3, its ladder's
+    # index 1), which is where multiple borrows and borrow-across-zero live.
+    "borrowing": dict(
+        skill_mastery={
+            "addition_no_carry": 1.0,
+            "addition_carry": 0.95,
+            "subtraction_no_borrow": 0.9,
+            "subtraction_borrow": 0.3,
+        },
+        misconception_log=[],
+        engagement=EngagementState(streak=3, xp=180, frustration_signal=False, consecutive_wrong=0),
+        # All three prerequisites need a completed run alongside their mastery
+        # values, or the sustained-mastery gate reads them as unmastered and
+        # `subtraction_borrow` shows as locked on the trail map.
+        mastery_run={"addition_no_carry": 3, "addition_carry": 3, "subtraction_no_borrow": 3},
+        digit_level={"subtraction_borrow": 1},
+        problems_completed=9,
+        quest_length=16,
+        active_skill="subtraction_borrow",
     ),
     "fluent": dict(
         skill_mastery={"addition_no_carry": 1.0, "addition_carry": 0.85},
@@ -441,6 +486,9 @@ def restore_session(
         pending_resurface=req.pending_resurface,
         resurface_progress=req.resurface_progress,
         resurfaced_skills=req.resurfaced_skills,
+        digit_level=req.digit_level,
+        digit_level_run=req.digit_level_run,
+        seen_combos=req.seen_combos,
     )
     background_tasks.add_task(_refresh_flavor_text, new_state.session_id, new_state.current_problem)
     return _to_session_response(new_state)
@@ -550,6 +598,7 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
             "skill": mastered_skill,
             "misconceptions": [m for m in new_state.misconception_log if m.skill == mastered_skill],
             "attempt_count": record["count"],
+            "avg_time_sec": narrative_context["reward"]["avg_time_sec"],
         }
         if new_state.current_problem is not None:
             narrative_context["boss_battle"] = {"skill": new_state.current_problem.skill_tag}
@@ -598,7 +647,7 @@ def get_narrative(session_id: str) -> NarrativeOut:
     if "mastery" in context:
         mastery = context["mastery"]
         result.mastery_narrative = narrative.mastery_moment_narrative(
-            mastery["skill"], mastery["misconceptions"], mastery["attempt_count"]
+            mastery["skill"], mastery["misconceptions"], mastery["attempt_count"], mastery.get("avg_time_sec")
         )
     if "boss_battle" in context:
         result.boss_battle_narrative = narrative.boss_battle_narrative(context["boss_battle"]["skill"])

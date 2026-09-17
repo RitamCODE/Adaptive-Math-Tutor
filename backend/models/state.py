@@ -71,6 +71,14 @@ class SessionState(BaseModel):
     engagement: EngagementState
     mastery_run: dict[str, int] = {}  # per skill: consecutive signal-bearing answers
                                       # that left its mastery at or above the threshold
+    digit_level: dict[str, int] = {}  # per skill: index into that skill's own digit-width
+                                      # ladder (backend/skills/_difficulty_ladder.py) — entirely
+                                      # independent of BKT mastery, see advance_digit_level()
+    digit_level_run: dict[str, int] = {}  # per skill: consecutive signal-bearing correct
+                                          # answers at the current digit_level, toward the next
+    seen_combos: dict[str, list[list[int]]] = {}  # per skill: 1-digit (a, b) operand pairs
+                                                  # already shown this session, while that skill
+                                                  # is still at its narrowest tier (digit_level 0)
     problems_completed: int = 0
     quest_length: int = 16
     pending_resurface: str | None = None  # skill demoted FROM, awaiting resurface (revision-plan 7.3)
