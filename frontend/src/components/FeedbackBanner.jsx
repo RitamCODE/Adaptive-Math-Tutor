@@ -1,4 +1,4 @@
-export default function FeedbackBanner({ feedback, justAdvanced }) {
+export default function FeedbackBanner({ feedback, justAdvanced, onNext }) {
   if (feedback.correct) {
     return (
       <div className="feedback feedback-correct">
@@ -9,6 +9,11 @@ export default function FeedbackBanner({ feedback, justAdvanced }) {
         )}
         {justAdvanced && feedback.boss_battle_narrative && (
           <div>{feedback.boss_battle_narrative}</div>
+        )}
+        {justAdvanced && (
+          <button type="button" className="feedback-next-button" onClick={onNext}>
+            Next
+          </button>
         )}
       </div>
     );

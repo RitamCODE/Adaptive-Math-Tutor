@@ -4,6 +4,7 @@ import FeedbackBanner from "./FeedbackBanner";
 import ColumnArithmetic from "./ColumnArithmetic";
 import NumberLine from "./NumberLine";
 import TenFrame from "./TenFrame";
+import { parseQuestion } from "../lib/arithmetic";
 
 // The two skills whose whole point is regrouping. For these the equation is
 // rendered in column form by ColumnArithmetic, which owns both the written
@@ -26,6 +27,7 @@ const CONFETTI_ANGLES = [
 export default function ProblemCard({
   problem,
   onSubmit,
+  onAdvance,
   loading,
   flashState,
   feedback,
@@ -53,6 +55,20 @@ export default function ProblemCard({
   const mastery = skillProgress?.find((entry) => entry.skill === problem.skill_tag)?.mastery ?? 0;
   const showColumnArithmetic = COLUMN_ARITHMETIC_SKILLS.has(problem.skill_tag);
   const showTenFrame = TEN_FRAME_SKILLS.has(problem.skill_tag);
+  // Every column but the last always contributes exactly one digit to the
+  // written answer — a column that overflows past 9 carries the extra into
+  // the next column rather than writing it. Only the last (most significant)
+  // column has nowhere further to carry into, so it alone may write two
+  // digits (e.g. 97 + 51: ones "8", then tens/hundreds "14" -> "148"). This
+  // is how many single-digit columns come before that final one; NumberPad
+  // uses it to know when a keystroke starts a new column (prepend) versus
+  // continues the final column's own two-digit value (insert after its
+  // first digit). Operands, not the hidden answer, decide this, so it's
+  // known before the student has answered anything.
+  const parsedOperands = parseQuestion(problem.question);
+  const columnCount = parsedOperands
+    ? Math.max(String(parsedOperands.a).length, String(parsedOperands.b).length)
+    : Infinity;
 
   return (
     <div className={`problem-card${flashState ? ` problem-card-${flashState}` : ""}`}>
@@ -93,9 +109,15 @@ export default function ProblemCard({
         />
       </div>
       {feedbackForThisProblem && (
-        <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} />
+        <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} onNext={onAdvance} />
       )}
-      <NumberPad value={answer} onChange={setAnswer} onSubmit={handleSubmit} disabled={loading} />
+      <NumberPad
+        value={answer}
+        onChange={setAnswer}
+        onSubmit={handleSubmit}
+        disabled={loading}
+        columnCount={columnCount}
+      />
     </div>
   );
 }

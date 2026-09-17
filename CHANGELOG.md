@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-17 — Session restore was dropping sustained-mastery runs
+
+When the backend restarts mid-session, the frontend recovers by POSTing its cached
+snapshot to `/sessions/{id}/restore`. That payload carried `skill_mastery` and
+`active_skill` but not `mastery_run` — so a restored session kept its real BKT
+probabilities and kept resuming wherever it had left off (including a downstream skill
+like subtraction), while `is_mastered()`, which requires 3 consecutive sustained answers
+and not just a high probability, saw every run reset to zero and reported every skill
+unmastered. The trail map showed a skill as still in progress while the problem on
+screen was already from further along. Fixed by including `mastery_run` in the restore
+payload (`frontend/src/App.jsx`), matching the resurface fields it was already sent
+alongside.
+
+## 2026-09-17 — Number pad's ones-first entry now matches carrying, not just digit order
+
+The previous ones-first fix prepended every keystroke, so a carrying answer like 148 (from
+97 + 51) typed as 8, then 4, then 1 — reproducing digit order but not the arithmetic: a
+column only ever writes one digit, carrying the rest into the next column, except the
+final column, which has nowhere left to carry into and may write two. `NumberPad` now
+takes a `columnCount` (the wider operand's digit count, computed from `problem.question`
+via the existing `parseQuestion` in `frontend/src/lib/arithmetic.js`) so it can tell a
+new-column keystroke (prepend) from the final column's own second digit (inserted right
+after its first): 97 + 51 now types 8 -> 18 -> 148, and 91 + 9 types 0 -> 10 -> 100.
+
+## 2026-09-16 — Mastery narrative needs a click, number pad types ones-first
+
+The mastery-moment banner (LLM narrative across all three touchpoints) was disappearing on
+a fixed 4-second timer regardless of whether the student had finished reading it. It now
+stays up with a "Next" button; the next-stage payload is already known when the button
+appears, so clicking it doesn't wait on the narrative fetch. Separately, the number pad
+now enters digits ones-first — each new digit is prepended rather than appended, and
+backspace drops the leftmost (most recently typed) character — mirroring how column
+arithmetic is actually solved right to left, instead of typing like a left-to-right
+calculator.
+
 ## 2026-09-16 — Digit-width ladder decoupled from BKT mastery; narrative word budgets
 
 A student's first correct answer on a skill lifted BKT mastery from 0.3 to ~0.9 (by

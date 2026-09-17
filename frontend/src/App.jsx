@@ -24,15 +24,14 @@ const REACTION_DURATION_MS = 1600;
 // problem (and its praise line) on screen before `displayData` reveals the
 // next state.
 const ADVANCE_DELAY_MS = 1600;
-// The mastery moment does NOT use a fixed window. Its narrative (touchpoints
-// 2-4) costs up to three sequential OpenAI calls, so a fixed 4s window that
-// started at submit time left the text roughly a second of life before the
-// next problem replaced it — it flashed and vanished. Instead the card is held
-// until the narrative actually resolves, and only then does MASTERY_READ_MS
-// start, so the reading window is a reading window rather than whatever was
-// left over. NARRATIVE_WAIT_CAP_MS bounds the hold so a slow or dead API
-// degrades to the generic line instead of stalling the session.
-const MASTERY_READ_MS = 4000;
+// The mastery moment does not use a fixed read window at all — its narrative
+// (touchpoints 2-4) costs up to three sequential OpenAI calls, so any fixed
+// window either flashes past before the text is readable or lingers when the
+// student is already done reading. Instead the card is held on screen with a
+// "Next" button until the student clicks it themselves; the narrative merges
+// into the banner whenever it resolves, or NARRATIVE_WAIT_CAP_MS bounds the
+// wait so a slow or dead API degrades to the generic line instead of leaving
+// the banner without any narrative at all.
 const NARRATIVE_WAIT_CAP_MS = 6000;
 const VALID_SEEDS = ["new", "struggling", "fluent", "borrowing"];
 
@@ -93,6 +92,10 @@ export default function App() {
   const problemStartRef = useRef(Date.now());
   const sessionStartRef = useRef(null);
   const advanceTimerRef = useRef(null);
+  // Holds the next-stage payload (already known as soon as submitAnswer
+  // resolves) during a mastery moment, until the student clicks "Next" to
+  // move on. Unlike advanceTimerRef this is never driven by a timer.
+  const pendingAdvanceRef = useRef(null);
   // Identifies one submit. `problem_id` cannot do this job: a wrong answer
   // keeps the same problem on screen, so every retry of it shares an id, and
   // a slow narrative request issued for one attempt would merge into the
@@ -134,6 +137,13 @@ export default function App() {
             problems_completed: snap.problems_completed,
             quest_length: snap.quest_length,
             active_skill: snap.current_problem.skill_tag,
+            // Without this, every skill's sustained-mastery run resets to
+            // zero on restore even though its raw mastery is preserved, so
+            // is_mastered() reports every skill unmastered — the trail map
+            // shows a skill as still-in-progress while the problem actually
+            // being served (from active_skill, above) can already be a
+            // downstream one.
+            mastery_run: snap.mastery_run,
             pending_resurface: snap.pending_resurface,
             resurface_progress: snap.resurface_progress,
             resurfaced_skills: snap.resurfaced_skills,
@@ -191,10 +201,21 @@ export default function App() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStartRef.current = null;
     clearTimeout(advanceTimerRef.current);
+    pendingAdvanceRef.current = null;
     setSessionData(null);
     setDisplayData(null);
     setFeedback(null);
     setReaction("idle");
+  }
+
+  // Advances past a mastery moment's feedback banner on the student's own
+  // click, instead of on a timer — see pendingAdvanceRef above.
+  function handleAdvance() {
+    const data = pendingAdvanceRef.current;
+    if (!data) return;
+    pendingAdvanceRef.current = null;
+    setDisplayData(data);
+    setLoading(false);
   }
 
   function handleStart(studentId) {
@@ -260,19 +281,18 @@ export default function App() {
         }
 
         // Mastery moment. The verdict is already on screen — this is off the
-        // submit-to-verdict path, so CLAUDE.md's 150ms budget is untouched —
-        // and the card is held until the narrative lands (or the cap expires)
-        // so its reading window starts when there is something to read.
+        // submit-to-verdict path, so CLAUDE.md's 150ms budget is untouched.
+        // The next-stage payload is already known, so the student can click
+        // "Next" immediately; the narrative text hot-swaps into the banner
+        // whenever it resolves (or the cap expires and the banner's built-in
+        // fallback text stands instead).
+        pendingAdvanceRef.current = data;
         withTimeout(getNarrative(sessionId), NARRATIVE_WAIT_CAP_MS).then((narrativeData) => {
           if (turnRef.current !== turnId) return;
           const capped = capNarrative(narrativeData);
           if (capped) {
             setFeedback((prev) => (prev ? { ...prev, ...capped } : prev));
           }
-          advanceTimerRef.current = setTimeout(() => {
-            setDisplayData(data);
-            setLoading(false);
-          }, MASTERY_READ_MS);
         });
       })
       .catch((err) => {
@@ -320,6 +340,7 @@ export default function App() {
                 <ProblemCard
                   problem={displayData.current_problem}
                   onSubmit={handleSubmitAnswer}
+                  onAdvance={handleAdvance}
                   loading={loading}
                   flashState={reaction === "idle" ? null : reaction}
                   feedback={feedback}
