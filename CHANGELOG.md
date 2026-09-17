@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-17 — Mastery moment no longer shows a stale, seemingly-live problem
+
+The already-answered problem stayed on screen behind the mastery-moment narrative
+until "Next" was clicked, and its brief correct-flash faded long before a student
+finished reading; after that it looked like a plain unanswered problem sitting above
+a subtly-disabled number pad, which read as broken rather than solved.
+`ProblemCard.jsx` now hides the equation, manipulative canvas, and number pad while
+`justAdvanced` is true, showing only the narrative banner and "Next" — which exposed
+a second bug where `handleAdvance()` never reset `justAdvanced`, permanently hiding
+the next problem after "Next" was clicked; both are fixed together. Verified live
+through a full `addition_carry -> subtraction_no_borrow` mastery transition.
+
 ## 2026-09-17 — All four skills now render their equation stacked
 
 `addition_no_carry` and `subtraction_no_borrow` used to render a plain horizontal

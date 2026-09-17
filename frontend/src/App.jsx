@@ -245,6 +245,7 @@ export default function App() {
     if (!data) return;
     pendingAdvanceRef.current = null;
     setDisplayData(data);
+    setJustAdvanced(false);
     setLoading(false);
   }
 

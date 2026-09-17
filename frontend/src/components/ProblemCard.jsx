@@ -85,41 +85,52 @@ export default function ProblemCard({
           ))}
         </div>
       )}
-      {problem.flavor_text && <div className="problem-flavor-text">{problem.flavor_text}</div>}
+      {!justAdvanced && problem.flavor_text && (
+        <div className="problem-flavor-text">{problem.flavor_text}</div>
+      )}
       {/* The equation is pinned above the manipulative area and sticks to the
           top of the card, so the numerals never need scrolling to during a
           problem — however tall the blocks grow underneath them. In column
           form the equation and the blocks are one widget precisely so they
-          share a grid; elsewhere it is the plain question string. */}
-      {showColumnArithmetic ? (
-        <ColumnArithmetic
-          problem={problem}
-          feedback={feedbackForThisProblem}
-          mastery={mastery}
-          onInteract={markManipulativeUsed}
-        />
-      ) : (
-        <StackedEquation problem={problem} />
+          share a grid; elsewhere it is the plain question string. Once the
+          skill is mastered (justAdvanced), this problem is already answered
+          and about to be replaced — showing it (and a number pad with
+          nothing to submit) reads as a live, unsolved problem, so the card
+          shows only the mastery narrative until "Next" is clicked. */}
+      {!justAdvanced &&
+        (showColumnArithmetic ? (
+          <ColumnArithmetic
+            problem={problem}
+            feedback={feedbackForThisProblem}
+            mastery={mastery}
+            onInteract={markManipulativeUsed}
+          />
+        ) : (
+          <StackedEquation problem={problem} />
+        ))}
+      {!justAdvanced && (
+        <div className="manipulative-canvas">
+          {showTenFrame && <TenFrame problem={problem} onInteract={markManipulativeUsed} />}
+          <NumberLine
+            problem={problem}
+            feedback={feedbackForThisProblem}
+            mastery={mastery}
+            onInteract={markManipulativeUsed}
+          />
+        </div>
       )}
-      <div className="manipulative-canvas">
-        {showTenFrame && <TenFrame problem={problem} onInteract={markManipulativeUsed} />}
-        <NumberLine
-          problem={problem}
-          feedback={feedbackForThisProblem}
-          mastery={mastery}
-          onInteract={markManipulativeUsed}
-        />
-      </div>
       {feedbackForThisProblem && (
         <FeedbackBanner feedback={feedbackForThisProblem} justAdvanced={justAdvanced} onNext={onAdvance} />
       )}
-      <NumberPad
-        value={answer}
-        onChange={setAnswer}
-        onSubmit={handleSubmit}
-        disabled={loading}
-        columnCount={columnCount}
-      />
+      {!justAdvanced && (
+        <NumberPad
+          value={answer}
+          onChange={setAnswer}
+          onSubmit={handleSubmit}
+          disabled={loading}
+          columnCount={columnCount}
+        />
+      )}
     </div>
   );
 }
