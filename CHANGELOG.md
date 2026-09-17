@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-17 — Mastery-card narratives merged into one structured LLM call
+
+The mastery-moment card's three lines (mastery, reward, boss-battle) each came from
+their own sequential OpenAI call with a near-identical prompt and no visibility into
+what the other two would say, which read as formulaic and tripled the endpoint's
+latency. `mastery_moment_narrative`, `effort_reward_narrative`, and
+`boss_battle_narrative` are replaced by one `mastery_card_narrative` structured-output
+call in `backend/llm/narrative.py` that shares full context across all three lines and
+is explicitly told to vary their openers; `flavor_word_problem` is untouched.
+
 ## 2026-09-17 — Mastery moment no longer shows a stale, seemingly-live problem
 
 The already-answered problem stayed on screen behind the mastery-moment narrative

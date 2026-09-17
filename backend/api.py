@@ -575,7 +575,7 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
 
     context_id = uuid4().hex
     narrative_context: dict = {}
-    # Touchpoints 2 and 3 fire at the mastery moment. That is normally the
+    # Touchpoints 2-4 fire together at the mastery moment. That is normally the
     # `advance_skill` transition, but `route_after_engagement` checks the
     # quest-end conditions *before* the advance branch, so the answer that
     # masters the final skill — the finale, and the strongest moment in the
@@ -589,19 +589,16 @@ def submit_answer(session_id: str, req: AnswerRequest, background_tasks: Backgro
     )
     if new_state.next_action == "advance_skill" or mastered_now:
         mastered_skill = problem.skill_tag
-        narrative_context["reward"] = {
-            "skill_tag": problem.skill_tag,
-            "attempt_count": record["count"],
-            "avg_time_sec": record["total_time_sec"] / record["count"],
-        }
-        narrative_context["mastery"] = {
+        next_skill = (
+            new_state.current_problem.skill_tag if new_state.current_problem is not None else None
+        )
+        narrative_context["mastery_card"] = {
             "skill": mastered_skill,
             "misconceptions": [m for m in new_state.misconception_log if m.skill == mastered_skill],
             "attempt_count": record["count"],
-            "avg_time_sec": narrative_context["reward"]["avg_time_sec"],
+            "avg_time_sec": record["total_time_sec"] / record["count"],
+            "next_skill": next_skill,
         }
-        if new_state.current_problem is not None:
-            narrative_context["boss_battle"] = {"skill": new_state.current_problem.skill_tag}
     _NARRATIVE_CONTEXT[session_id] = {"context_id": context_id, **narrative_context}
 
     base = _to_session_response(new_state)
@@ -639,18 +636,19 @@ def get_narrative(session_id: str) -> NarrativeOut:
         return cached[1]
 
     result = NarrativeOut()
-    if "reward" in context:
-        reward = context["reward"]
-        result.reward_narrative = narrative.effort_reward_narrative(
-            reward["skill_tag"], reward["attempt_count"], reward["avg_time_sec"]
+    mastery_card = context.get("mastery_card")
+    if mastery_card is not None:
+        bundle = narrative.mastery_card_narrative(
+            mastery_card["skill"],
+            mastery_card["misconceptions"],
+            mastery_card["attempt_count"],
+            mastery_card["avg_time_sec"],
+            mastery_card["next_skill"],
         )
-    if "mastery" in context:
-        mastery = context["mastery"]
-        result.mastery_narrative = narrative.mastery_moment_narrative(
-            mastery["skill"], mastery["misconceptions"], mastery["attempt_count"], mastery.get("avg_time_sec")
-        )
-    if "boss_battle" in context:
-        result.boss_battle_narrative = narrative.boss_battle_narrative(context["boss_battle"]["skill"])
+        if bundle is not None:
+            result.mastery_narrative = bundle.mastery_narrative
+            result.reward_narrative = bundle.reward_narrative
+            result.boss_battle_narrative = bundle.boss_battle_narrative
 
     _NARRATIVE_CACHE[session_id] = (context_id, result)
     return result

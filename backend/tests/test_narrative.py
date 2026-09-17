@@ -16,21 +16,6 @@ def test_flavor_word_problem_returns_none_without_api_key():
     assert narrative.flavor_word_problem("2 + 3 = ?", 5, "addition_no_carry", 0.3) is None
 
 
-def test_mastery_moment_narrative_returns_none_without_api_key():
-    misconceptions = [
-        Misconception(skill="addition_no_carry", bug_type="no_carry", timestamp=datetime.now())
-    ]
-    assert narrative.mastery_moment_narrative("addition_no_carry", misconceptions, 5) is None
-
-
-def test_effort_reward_narrative_returns_none_without_api_key():
-    assert narrative.effort_reward_narrative("addition_no_carry", 3, 12.5) is None
-
-
-def test_boss_battle_narrative_returns_none_without_api_key():
-    assert narrative.boss_battle_narrative("addition_carry") is None
-
-
 def test_word_count_empty_string():
     assert narrative._word_count("") == 0
 
@@ -101,86 +86,60 @@ def test_flavor_word_problem_falls_back_to_none_if_regeneration_fails(monkeypatc
     assert responses == []
 
 
-def test_mastery_moment_narrative_system_prompt_states_word_budget(monkeypatch):
-    captured = {}
+# --- mastery_card_narrative (touchpoints 2-4, merged) ---
 
-    def fake_complete(system, user, max_tokens=120):
+
+def _bundle_for(response_model, mastery="Short.", reward="Nice work.", boss="New challenge!"):
+    kwargs = {"mastery_narrative": mastery, "reward_narrative": reward}
+    if "boss_battle_narrative" in response_model.model_fields:
+        kwargs["boss_battle_narrative"] = boss
+    return response_model(**kwargs)
+
+
+def _fake_complete_structured(captured, **bundle_kwargs):
+    def fake(system, user, response_model):
         captured["system"] = system
-        return "Short."
+        captured["user"] = user
+        captured["response_model"] = response_model
+        return _bundle_for(response_model, **bundle_kwargs)
 
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    return fake
+
+
+def test_mastery_card_narrative_returns_none_without_api_key():
     misconceptions = [
-        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
+        Misconception(skill="addition_no_carry", bug_type="no_carry", timestamp=datetime.now())
     ]
-    narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
-
-    assert "20 words" in captured["system"]
+    assert narrative.mastery_card_narrative("addition_no_carry", misconceptions, 5, 12.5) is None
 
 
-def test_mastery_moment_narrative_regenerates_once_on_overrun_and_succeeds(monkeypatch):
-    too_long = " ".join(["word"] * 25)
-    short = "You beat the carrying trap that used to trip you up."
-    responses = [too_long, short]
-
-    def fake_complete(system, user, max_tokens=120):
-        return responses.pop(0)
-
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
-    misconceptions = [
-        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
-    ]
-    result = narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
-
-    assert result == short
-    assert responses == []
-
-
-def test_mastery_moment_narrative_falls_back_to_none_if_regeneration_still_overruns(monkeypatch):
-    too_long = " ".join(["word"] * 25)
-
-    def fake_complete(system, user, max_tokens=120):
-        return too_long
-
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
-    misconceptions = [
-        Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now())
-    ]
-    result = narrative.mastery_moment_narrative("addition_carry", misconceptions, 4)
-
+def test_mastery_card_narrative_falls_back_to_none_if_structured_call_fails(monkeypatch):
+    monkeypatch.setattr(narrative, "_complete_structured", lambda system, user, response_model: None)
+    result = narrative.mastery_card_narrative("addition_no_carry", [], 3, 4.2)
     assert result is None
 
 
-def test_mastery_moment_narrative_with_misconceptions_names_pattern(monkeypatch):
+def test_mastery_card_narrative_with_misconceptions_names_pattern(monkeypatch):
     captured = {}
-
-    def fake_complete(system, user, max_tokens=120):
-        captured["system"] = system
-        captured["user"] = user
-        return "Nice work."
-
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
     misconceptions = [
         Misconception(skill="addition_carry", bug_type="no_carry", timestamp=datetime.now()),
         Misconception(skill="addition_carry", bug_type="add_off_by_one", timestamp=datetime.now()),
     ]
-    narrative.mastery_moment_narrative("addition_carry", misconceptions, 6)
+    result = narrative.mastery_card_narrative("addition_carry", misconceptions, 6, 9.0)
 
     assert "no_carry" in captured["user"]
     assert "add_off_by_one" in captured["user"]
     assert "none logged" not in captured["user"]
     assert "clean run" not in captured["user"]
+    assert captured["response_model"] is narrative._NarrativesNoBoss
+    assert result.boss_battle_narrative is None
 
 
-def test_mastery_moment_narrative_clean_run_uses_fluency_branch(monkeypatch):
+def test_mastery_card_narrative_clean_run_uses_fluency_branch(monkeypatch):
     captured = {}
-
-    def fake_complete(system, user, max_tokens=120):
-        captured["system"] = system
-        captured["user"] = user
-        return "Fast and confident!"
-
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
-    narrative.mastery_moment_narrative("addition_carry", [], 3, avg_time_sec=4.2)
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
+    narrative.mastery_card_narrative("addition_carry", [], 3, 4.2)
 
     assert "none logged" not in captured["user"]
     assert "clean run" in captured["user"].lower()
@@ -189,30 +148,75 @@ def test_mastery_moment_narrative_clean_run_uses_fluency_branch(monkeypatch):
     assert "fluency" in captured["system"].lower() or "speed" in captured["system"].lower()
 
 
-def test_effort_reward_narrative_system_prompt_states_word_budget(monkeypatch):
+def test_mastery_card_narrative_includes_boss_battle_when_next_skill_given(monkeypatch):
     captured = {}
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
+    result = narrative.mastery_card_narrative(
+        "addition_carry", [], 3, 4.2, next_skill="subtraction_borrow"
+    )
 
-    def fake_complete(system, user, max_tokens=120):
-        captured["system"] = system
-        return "Nice speed!"
+    assert captured["response_model"] is narrative._NarrativesWithBoss
+    assert "subtraction_borrow" in captured["user"]
+    assert result.boss_battle_narrative == "New challenge!"
 
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
-    narrative.effort_reward_narrative("addition_no_carry", 2, 3.0)
+
+def test_mastery_card_narrative_omits_boss_battle_when_next_skill_none(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
+    result = narrative.mastery_card_narrative("addition_carry", [], 3, 4.2, next_skill=None)
+
+    assert result.boss_battle_narrative is None
+    assert "boss_battle_narrative" not in captured["response_model"].model_fields
+
+
+def test_mastery_card_narrative_system_prompt_states_word_budget(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
+    narrative.mastery_card_narrative("addition_carry", [], 3, 4.2, next_skill="subtraction_borrow")
 
     assert "20 words" in captured["system"]
 
 
-def test_boss_battle_narrative_system_prompt_states_word_budget(monkeypatch):
+def test_mastery_card_narrative_system_prompt_instructs_varied_openers(monkeypatch):
     captured = {}
+    monkeypatch.setattr(narrative, "_complete_structured", _fake_complete_structured(captured))
+    narrative.mastery_card_narrative("addition_carry", [], 3, 4.2, next_skill="subtraction_borrow")
 
-    def fake_complete(system, user, max_tokens=120):
-        captured["system"] = system
-        return "New challenge!"
+    assert "different sentence opener" in captured["system"]
+    assert "restate" in captured["system"]
 
-    monkeypatch.setattr(narrative, "_complete", fake_complete)
-    narrative.boss_battle_narrative("subtraction_borrow")
 
-    assert "20 words" in captured["system"]
+def test_mastery_card_narrative_regenerates_once_on_overrun_and_succeeds(monkeypatch):
+    too_long = " ".join(["word"] * 25)
+    responses = [
+        {"mastery": too_long},
+        {"mastery": "You beat the carrying trap that used to trip you up."},
+    ]
+
+    def fake(system, user, response_model):
+        kwargs = responses.pop(0)
+        return _bundle_for(response_model, mastery=kwargs["mastery"])
+
+    monkeypatch.setattr(narrative, "_complete_structured", fake)
+    result = narrative.mastery_card_narrative("addition_carry", [], 4, 8.0)
+
+    assert result.mastery_narrative == "You beat the carrying trap that used to trip you up."
+    assert responses == []
+
+
+def test_mastery_card_narrative_falls_back_to_none_if_regeneration_still_overruns(monkeypatch):
+    too_long = " ".join(["word"] * 25)
+    calls = []
+
+    def fake(system, user, response_model):
+        calls.append(user)
+        return _bundle_for(response_model, mastery=too_long)
+
+    monkeypatch.setattr(narrative, "_complete_structured", fake)
+    result = narrative.mastery_card_narrative("addition_carry", [], 4, 8.0)
+
+    assert result is None
+    assert len(calls) == 2
 
 
 def test_client_wraps_with_langsmith_when_key_present(monkeypatch):

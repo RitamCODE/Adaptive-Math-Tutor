@@ -115,7 +115,7 @@ def test_reward_narrative_context_not_queued_on_ordinary_correct_answer():
     )
     assert response.json()["next_action"] == "new_problem"
     assert response.json()["skill_mastery"][problem.skill_tag] < 0.8
-    assert "reward" not in _NARRATIVE_CONTEXT[session_id]
+    assert "mastery_card" not in _NARRATIVE_CONTEXT[session_id]
 
 
 def _answer_current_problem_correctly(session_id: str) -> dict:
@@ -131,18 +131,18 @@ def test_reward_narrative_context_queued_on_advance_skill():
     # Mastery is sustained, not a single crossing: a skill counts as mastered
     # only once it has held at or above the threshold after each of the last
     # MASTERY_MIN_RUN signal-bearing answers. So the first two correct answers
-    # stay on the same skill and only the third advances, taking touchpoint 3
-    # ("effort-aware reward framing") with it.
+    # stay on the same skill and only the third advances, taking the merged
+    # mastery-card narrative (touchpoints 2-4) with it.
     start = client.post("/sessions", json={"student_id": "reward-gate-2"})
     session_id = start.json()["session_id"]
 
     for _ in range(MASTERY_MIN_RUN - 1):
         assert _answer_current_problem_correctly(session_id)["next_action"] == "new_problem"
-        assert "reward" not in _NARRATIVE_CONTEXT[session_id]
+        assert "mastery_card" not in _NARRATIVE_CONTEXT[session_id]
 
     body = _answer_current_problem_correctly(session_id)
     assert body["next_action"] == "advance_skill"
-    assert "reward" in _NARRATIVE_CONTEXT[session_id]
+    assert "mastery_card" in _NARRATIVE_CONTEXT[session_id]
 
 
 def test_skill_is_not_mastered_until_the_run_is_complete():
@@ -192,8 +192,7 @@ def test_final_mastery_moment_still_queues_its_narrative():
         if body["next_action"] == "end_session":
             break
 
-    assert "mastery" in _NARRATIVE_CONTEXT[session_id]
-    assert "reward" in _NARRATIVE_CONTEXT[session_id]
+    assert "mastery_card" in _NARRATIVE_CONTEXT[session_id]
 
 
 def test_prior_avg_time_sec_excludes_the_current_attempt():
