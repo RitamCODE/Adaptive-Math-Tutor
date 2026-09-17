@@ -71,7 +71,8 @@ body {
   .app-shell h1,
   .app-shell .error-banner,
   .app-shell .stats-bar,
-  .app-shell > .student-id-form {
+  .app-shell > .student-id-form,
+  .app-shell > .resume-session-prompt {
     grid-column: 1 / -1;
   }
 
@@ -105,7 +106,8 @@ body {
 /* Forms and cards */
 
 .student-id-form,
-.problem-card {
+.problem-card,
+.resume-session-prompt {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -115,6 +117,58 @@ body {
   border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px rgba(58, 43, 34, 0.08);
   position: relative;
+}
+
+.resume-session-prompt {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.resume-session-prompt-message {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--color-ink);
+}
+
+.resume-session-prompt-stats {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.resume-session-prompt-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.resume-session-prompt-actions button {
+  padding: 0.6rem 1.4rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 999px;
+  border: none;
+  background: var(--color-coral);
+  color: white;
+  min-height: 48px;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.resume-session-prompt-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.resume-session-prompt-actions button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.resume-session-prompt-actions button.resume-session-prompt-secondary {
+  background: transparent;
+  color: var(--color-ink-soft);
+  border: 2px solid var(--color-locked);
 }
 
 .student-id-form label {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getSession, getNarrative, restoreSession, seedSession, startSession, submitAnswer } from "./api";
 import StudentIdForm from "./components/StudentIdForm";
+import ResumeSessionPrompt from "./components/ResumeSessionPrompt";
 import ProblemCard from "./components/ProblemCard";
 import SkillTrailMap from "./components/SkillTrailMap";
 import StatsBar from "./components/StatsBar";
@@ -89,6 +90,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [resuming, setResuming] = useState(true);
+  // Set when a 404 on GET /sessions/{id} shows the backend lost this session
+  // (e.g. it was restarted) but our own cached snapshot could recover it.
+  // Holds { sessionId, snap } while the student chooses whether to resume or
+  // start over, instead of silently reinstalling the old session for them.
+  const [pendingRestore, setPendingRestore] = useState(null);
   const problemStartRef = useRef(Date.now());
   const sessionStartRef = useRef(null);
   const advanceTimerRef = useRef(null);
@@ -125,29 +131,12 @@ export default function App() {
     getSession(cached.session_id)
       .then((data) => hydrate(data))
       .catch((err) => {
-        // Backend restarted and lost this session: rebuild it from our own
-        // cached (correct_answer-free) snapshot instead of losing progress.
+        // Backend restarted and lost this session: our own cached snapshot
+        // could rebuild it, but ask the student first instead of silently
+        // reinstalling whatever state it was in.
         if (err.status === 404 && cached.snapshot?.current_problem) {
-          const snap = cached.snapshot;
-          return restoreSession(cached.session_id, {
-            student_id: snap.student_id,
-            skill_mastery: snap.skill_mastery,
-            misconception_log: snap.misconception_log,
-            engagement: snap.engagement,
-            problems_completed: snap.problems_completed,
-            quest_length: snap.quest_length,
-            active_skill: snap.current_problem.skill_tag,
-            // Without this, every skill's sustained-mastery run resets to
-            // zero on restore even though its raw mastery is preserved, so
-            // is_mastered() reports every skill unmastered — the trail map
-            // shows a skill as still-in-progress while the problem actually
-            // being served (from active_skill, above) can already be a
-            // downstream one.
-            mastery_run: snap.mastery_run,
-            pending_resurface: snap.pending_resurface,
-            resurface_progress: snap.resurface_progress,
-            resurfaced_skills: snap.resurfaced_skills,
-          }).then((data) => hydrate(data));
+          setPendingRestore({ sessionId: cached.session_id, snap: cached.snapshot });
+          return;
         }
         throw err;
       })
@@ -196,6 +185,47 @@ export default function App() {
   }, [questComplete]);
 
   useEffect(() => () => clearTimeout(advanceTimerRef.current), []);
+
+  function handleResumePrevious() {
+    if (!pendingRestore) return;
+    const { sessionId, snap } = pendingRestore;
+    setLoading(true);
+    setError(null);
+    restoreSession(sessionId, {
+      student_id: snap.student_id,
+      skill_mastery: snap.skill_mastery,
+      misconception_log: snap.misconception_log,
+      engagement: snap.engagement,
+      problems_completed: snap.problems_completed,
+      quest_length: snap.quest_length,
+      active_skill: snap.current_problem.skill_tag,
+      // Without this, every skill's sustained-mastery run resets to zero on
+      // restore even though its raw mastery is preserved, so is_mastered()
+      // reports every skill unmastered — the trail map shows a skill as
+      // still-in-progress while the problem actually being served (from
+      // active_skill, above) can already be a downstream one.
+      mastery_run: snap.mastery_run,
+      pending_resurface: snap.pending_resurface,
+      resurface_progress: snap.resurface_progress,
+      resurfaced_skills: snap.resurfaced_skills,
+    })
+      .then((data) => {
+        hydrate(data);
+        setPendingRestore(null);
+      })
+      .catch(() => {
+        // Nothing left to recover from — fall back to a clean start.
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        setPendingRestore(null);
+      })
+      .finally(() => setLoading(false));
+  }
+
+  function handleStartFresh() {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionStartRef.current = null;
+    setPendingRestore(null);
+  }
 
   function handlePlayAgain() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -312,7 +342,14 @@ export default function App() {
       <h1>Adaptive Math Tutor</h1>
       {error && <div className="error-banner">{error}</div>}
 
-      {!displayData ? (
+      {pendingRestore ? (
+        <ResumeSessionPrompt
+          snap={pendingRestore.snap}
+          onResume={handleResumePrevious}
+          onStartFresh={handleStartFresh}
+          loading={loading}
+        />
+      ) : !displayData ? (
         <StudentIdForm onStart={handleStart} loading={loading} />
       ) : (
         <>

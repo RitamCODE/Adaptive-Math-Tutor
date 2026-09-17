@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-17 — Backend-restart recovery now asks before reinstalling a stale session
+
+A backend restart wipes the in-memory session store, but the browser's cached
+localStorage snapshot survives it; the frontend was silently reinstalling that
+snapshot on the next reload (via `POST /sessions/{id}/restore`), which could
+land a student — or a developer testing a fresh flow — back mid-quest on a
+downstream skill with no indication why. `App.jsx`'s mount effect now stops at
+a new `ResumeSessionPrompt` on a 404-triggered recovery instead of restoring
+automatically; the student picks "Resume" (unchanged restore payload/behavior)
+or "Start fresh" (clears localStorage, falls through to the name form). A
+plain refresh with the backend still alive is unaffected. Verified live:
+restarted the backend mid-session and confirmed both branches.
+
 ## 2026-09-17 — Session restore was dropping sustained-mastery runs
 
 When the backend restarts mid-session, the frontend recovers by POSTing its cached
