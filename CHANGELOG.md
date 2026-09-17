@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-17 — Mastery card's three narrative lines are now sequential, color-coded steps
+
+The mastery-moment card stacked its three narrative lines as plain unstyled text under
+one "Next" button; the user asked for something more engaging. `FeedbackBanner.jsx` now
+shows one step at a time (gold trophy = mastery, coral lightning = reward, teal sword =
+boss-battle), each with progress dots and its own "Next →", advancing to the real next
+problem only from the last step. New CSS in `App.css` reuses the app's existing
+coral/gold/teal palette and its column-arithmetic entrance-animation style.
+
 ## 2026-09-17 — Mastery-card narratives merged into one structured LLM call
 
 The mastery-moment card's three lines (mastery, reward, boss-battle) each came from

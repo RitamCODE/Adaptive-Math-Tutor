@@ -26,9 +26,10 @@ const REACTION_DURATION_MS = 1600;
 // next state.
 const ADVANCE_DELAY_MS = 1600;
 // The mastery moment does not use a fixed read window at all — its narrative
-// (touchpoints 2-4) costs up to three sequential OpenAI calls, so any fixed
-// window either flashes past before the text is readable or lingers when the
-// student is already done reading. Instead the card is held on screen with a
+// (touchpoints 2-4, merged into one structured OpenAI call) still costs a
+// network round-trip, so any fixed window either flashes past before the
+// text is readable or lingers when the student is already done reading.
+// Instead the card is held on screen with a
 // "Next" button until the student clicks it themselves; the narrative merges
 // into the banner whenever it resolves, or NARRATIVE_WAIT_CAP_MS bounds the
 // wait so a slow or dead API degrades to the generic line instead of leaving
