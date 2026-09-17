@@ -61,6 +61,7 @@ adaptive-math-tutor/
       skill_graph.py       # prerequisite DAG
       addition_carry.py    # templates + detectors for this skill
       subtraction_borrow.py
+      _difficulty_ladder.py # digit-width progression, independent of BKT mastery  [new]
     content/
       misconceptions.json  # hint copy + visual payload, keyed by bug_type  [new]
     logging/
@@ -73,6 +74,7 @@ adaptive-math-tutor/
       test_curriculum.py
       test_retry_ladder.py [new]
       test_mastery_gate.py [new]
+      test_difficulty_ladder.py [new]
   frontend/
     (problem display, number pad, manipulative canvas, skill map, XP/streak)
     src/lib/remediation.js   # bandFromMastery(): which remediation a wrong answer earns
@@ -143,6 +145,17 @@ class SessionState(BaseModel):
     problems_completed: int
     mastery_run: dict[str, int]              # per skill: consecutive signal-bearing answers
                                              # that left its mastery at or above 0.8
+    digit_level: dict[str, int]               # per skill: current digit-width tier index into
+                                               # that skill's own width ladder (see "Digit-width
+                                               # progression is independent of mastery" below).
+                                               # Never read from or written by the BKT update.
+    digit_level_run: dict[str, int]           # per skill: consecutive signal-bearing correct
+                                               # answers at the current digit_level, toward the
+                                               # next tier
+    seen_combos: dict[str, list[list[int]]]   # per skill: 1-digit (a, b) operand pairs already
+                                               # shown this session, while that skill is still at
+                                               # its narrowest tier — avoids repeats without
+                                               # requiring the full combo space be exhausted
     quest_length: int                        # default 16
     pending_resurface: str | None            # skill demoted FROM, awaiting resurface (revision-plan 7.3)
     resurface_progress: int                  # correct answers on the prerequisite since that demotion
@@ -197,6 +210,18 @@ def is_mastered(skill: str, state: SessionState) -> bool: ...
 Note the gate is sticky in one direction: from a saturated skill it takes four consecutive wrong answers to fall back under 0.8, and the fatigue stop ends the session at exactly four. A genuinely mastered skill is not un-mastered mid-session.
 
 **Distinct from the mastery threshold**, the remediation bands are 0.4 and 0.7. Do not unify these numbers. 0.8 governs progression; 0.4 and 0.7 govern **what kind of remediation a wrong answer earns**, not what is visible by default — no manipulative is shown before an error at any mastery level. See "Manipulatives are remediation" below.
+
+### Digit-width progression is independent of mastery
+
+Raw BKT mastery is not used to choose operand digit-width. It can't be: with this project's parameters a single correct answer lifts a fresh skill from `p_init = 0.3` to ~0.90, so any bucket table keyed on `P(L)` skips whatever tier sits between "just started" and "clearly fluent" — that was the original bug this section closes. Digit-width is instead its own small integer ladder per skill, implemented in `backend/skills/_difficulty_ladder.py`, and BKT mastery never feeds it and it never feeds BKT mastery.
+
+`addition_no_carry` and `subtraction_no_borrow` start at a 1-digit tier; `addition_carry` and `subtraction_borrow` start at 2-digit, since a carry or borrow is impossible with single digits.
+
+**General rule (any tier above the narrowest one)**: exactly 3 consecutive correct, signal-bearing answers at the current digit-width advance to the next tier (`LEVEL_UP_RUN`). A wrong answer resets that count to zero. This run is tracked in `SessionState.digit_level_run` and is a completely separate counter from `mastery_run` — a skill can sit at its widest tier while still well below 0.8 mastery, and vice versa.
+
+**Narrowest tier (1-digit) rule**: 2 consecutive correct answers (`NARROW_TIER_BASE_RUN`) advance to 2-digit, but the pair must escalate — the first correct answer is on a "trivial" combo (an operand is 0 for addition; the subtrahend is 0 or the two operands are equal for subtraction), the second on a "non-trivial" one. `SessionState.seen_combos` tracks which 1-digit operand pairs have already been shown this session per skill, so the same combo isn't repeated while at this tier — this is a selection heuristic to avoid boredom, not a coverage gate; the 2-correct rule above is still the only thing that advances the tier.
+
+**No degradation**: digit-width only ever increases within a skill. Sustained struggle is handled entirely by the existing attempt-3 demotion to the prerequisite skill, which is unrelated to digit-width.
 
 ### Skill groups
 
