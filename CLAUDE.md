@@ -402,3 +402,7 @@ Verification for all of the above lives in `docs/CHECKLIST.md`. Flag items as re
 - Phone portrait layout, orientation handling
 - More than three manipulatives
 - Refactoring the BKT model
+
+## Things to keep in mind
+
+- after testing in each session always turn off the backend and the frontend
