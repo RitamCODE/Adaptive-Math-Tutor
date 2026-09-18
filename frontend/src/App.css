@@ -229,16 +229,71 @@ body {
 }
 
 .number-pad-display {
+  position: relative;
   min-height: 48px;
   min-width: 6rem;
   padding: 0.4rem 1rem;
   font-size: 1.75rem;
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   border-radius: var(--radius-md);
   border: 2px solid var(--color-locked);
   background: var(--color-bg);
   color: var(--color-ink);
+}
+
+.number-pad-placeholder {
+  color: var(--color-locked);
+}
+
+.number-pad-digit {
+  display: inline-block;
+}
+
+.number-pad-caret-anchor {
+  position: relative;
+  display: inline-block;
+  width: 2px;
+  height: 1.9rem;
+}
+
+.number-pad-caret {
+  position: absolute;
+  inset: 0;
+  width: 2px;
+  background: var(--color-coral);
+  animation: number-pad-caret-blink 1s step-end infinite;
+}
+
+.number-pad-display-dragging .number-pad-caret {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes number-pad-caret-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.number-pad-caret-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  min-width: 48px;
+  min-height: 48px;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  cursor: grab;
+  background: transparent;
 }
 
 .number-pad-grid {

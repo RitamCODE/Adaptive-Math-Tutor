@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-18 — Keyboard input and a draggable cursor for the number pad
+
+Added physical-keyboard support (digits, Backspace, Enter) and a draggable text cursor to the
+number pad's answer display. Pure on-screen tapping is byte-identical to before — the existing
+right-to-left column-aware auto-placement is untouched. The first time a student uses the
+keyboard or drags the cursor, that answer switches to standard left-to-right cursor editing
+(arrow keys move it too) until the next problem resets it back to auto-placement.
+
 ## 2026-09-18 — Wired Railway + Vercel to auto-deploy from GitHub `main`
 
 Both platforms had only ever been deployed manually via CLI (`vercel`/`railway up`); a push to

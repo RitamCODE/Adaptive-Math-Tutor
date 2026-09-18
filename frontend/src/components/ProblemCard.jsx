@@ -37,16 +37,23 @@ export default function ProblemCard({
   skillProgress,
 }) {
   const [answer, setAnswer] = useState("");
+  // null = auto-placement mode (today's column-aware tap behavior). Becomes a
+  // concrete index the moment the student uses the keyboard or drags the
+  // on-screen cursor, and resets back to null on every new problem/submit so
+  // pure tapping always starts fresh in auto-placement mode.
+  const [cursorIndex, setCursorIndex] = useState(null);
   const usedManipulativeRef = useRef(false);
 
   useEffect(() => {
     usedManipulativeRef.current = false;
+    setCursorIndex(null);
   }, [problem.problem_id]);
 
   function handleSubmit() {
     if (answer.trim() === "") return;
     onSubmit(Number(answer), usedManipulativeRef.current);
     setAnswer("");
+    setCursorIndex(null);
   }
 
   function markManipulativeUsed() {
@@ -129,6 +136,8 @@ export default function ProblemCard({
           onSubmit={handleSubmit}
           disabled={loading}
           columnCount={columnCount}
+          cursorIndex={cursorIndex}
+          onCursorChange={setCursorIndex}
         />
       )}
     </div>
