@@ -142,10 +142,39 @@ uv run pytest       # backend test suite
 - Session *state* persistence beyond the process lifetime — the new event log is durable SQLite, but `SessionState` itself still lives in an in-memory dict and is lost on backend restart (the `/restore` endpoint reinstalls mastery/XP/misconceptions from the browser's own cache, but a fresh problem is generated rather than the exact in-flight one)
 - The demo video walkthrough (revision-plan Part 8, Day 7)
 
+## Does the adaptive engine actually help? A synthetic-student evaluation
+
+BKT mastery tracking is only worth having if it changes outcomes for real students, not just
+its own bookkeeping. `backend/eval/` checks that directly: synthetic students with a hidden
+true mastery, slip, guess, and learning rate per skill — sampled independently of the numbers
+the engine itself assumes — are driven through the actual compiled graph turn-by-turn (no
+mocks, no shortcuts) and compared against a fixed-schedule, fixed-difficulty baseline given the
+identical 16-problem budget. Every run is scored two ways: against the engine's own
+BKT-confirmed mastery, and against the synthetic student's hidden ground truth, which the
+engine never sees.
+
+| Profile | Engine-confirmed, adaptive | Engine-confirmed, baseline | Ground-truth, adaptive | Ground-truth, baseline |
+|---|---|---|---|---|
+| Struggling | 4% | 2% | 7% | 6% |
+| Average | 22% | 13% | 30% | 28% |
+| Fluent | 43% | 37% | 56% | 64% |
+| Mixed | 24% | 14% | 28% | 31% |
+
+Given the identical practice budget, adaptive pacing shows a real, roughly 9-point edge in how
+often the engine's own sustained-evidence gate — not merely crossed once, but held for 3
+consecutive answers — can actually *confirm* all four skills mastered, for average- and
+mixed-ability populations. On the harder question underneath that — did the student really
+learn the material, independent of whether the tracking can prove it — the two conditions come
+out statistically indistinguishable at this sample size in every profile, and in 2 of the 16
+individual skill comparisons the fixed baseline comes out ahead instead, not adaptive. Full
+breakdown, exact test statistics, and the multiple-comparisons caveat behind both of those
+claims: [`KNOWN_GAPS.md`](KNOWN_GAPS.md).
+
 ## Further reading
 
 - `backend/README.md` — the backend in depth: data models, the BKT formulas, the skill/bug-rule module contract, the HTTP API shape
 - `frontend/README.md` — the frontend in depth: component tree, state flow, the backend contract it's coupled to
 - `CLAUDE.md` — the full spec: hard constraints, exact algorithms, copy limits, non-goals
 - `docs/revision-plan.md` / `docs/CHECKLIST.md` — the active work plan and its manual verification checklist
+- `KNOWN_GAPS.md` — the simulated-learner evaluation in full: every profile, every skill, session-length distributions, and the statistics behind the summary above
 - `CHANGELOG.md` — what actually landed, session by session

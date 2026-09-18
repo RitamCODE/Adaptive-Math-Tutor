@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-17 — Simulated-learner results added to README, full data in new KNOWN_GAPS.md
+
+Added a README section reporting the eval's headline finding (engine-confirmed mastery, not
+ground-truth mastery, is where adaptive pacing shows a real ~9-point edge, in 2 of 4 ability
+profiles) and a new top-level `KNOWN_GAPS.md` with the complete per-profile/per-skill/session-
+length data plus two-proportion z-tests and a multiple-comparisons caveat (the finding survives
+BH-FDR within its own test family but not a Bonferroni correction across every test run). Every
+percentage in both files uses one consistent round-half-up rule, checked against the exact
+n/200 counts rather than trusting the eval script's own (banker's-rounding) console output.
+
+## 2026-09-17 — Simulated-learner harness: verified metric independence, added digit-width effect
+
+Added `effective_p_slip`/`width_sensitivity_true` so a synthetic learner's true correctness now
+degrades with a problem's digit-width, since without it the digit-width ladder had zero causal
+effect on simulated outcomes. Confirmed (and added tests proving) the "true/engine mastered"
+metrics use the real, unpatched `is_mastered` independent of the baseline's routing patches, and
+that those patches never leak into a later adaptive run. Along the way, found and fixed a
+reproducibility bug: problem generators draw from a shared `default_rng` singleton, not the
+seedable global `random` module, so `simulate.py` now reseeds that singleton directly.
+`simulate.py` also gained per-ability-profile breakdown and a turn-count distribution.
+
+## 2026-09-17 — Simulated-learner evaluation harness
+
+Added `backend/eval/` (synthetic_learner.py, driver.py, baseline.py, simulate.py), an offline
+tool separate from the shipped app: synthetic students with an independent hidden
+slip/guess/learning-rate per skill are driven turn-by-turn through the real, compiled
+`backend.graph.app` (no FastAPI/LLM/SQLite involved) and compared against a non-adaptive
+baseline that swaps only `is_mastered`/`select_next_skill`/`_difficulty_for` (via targeted
+monkeypatches on `backend.graph`'s namespace) for a fixed problems-per-skill budget and a
+pinned digit-width, while sharing the real BKT update, retry ladder, and session-end rules.
+4 new sanity tests in `test_eval_simulation.py`, one of which caught a real bug (the fixed
+schedule's fallback returning a still-locked skill once every unlocked skill's budget ran
+out) before it shipped.
+
 ## 2026-09-17 — Mastery card's three narrative lines are now sequential, color-coded steps
 
 The mastery-moment card stacked its three narrative lines as plain unstyled text under
