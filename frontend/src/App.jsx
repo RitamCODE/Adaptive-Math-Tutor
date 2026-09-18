@@ -16,7 +16,7 @@ import "./App.css";
 // SessionResponse the server sent us — enough to rehydrate on a plain
 // refresh (via GET) or restore a session the backend lost on restart
 // (via POST .../restore), without ever caching a correct_answer.
-const SESSION_STORAGE_KEY = "adaptive-math-tutor:session";
+const SESSION_STORAGE_KEY = "adaptmath:session";
 const REACTION_DURATION_MS = 1600;
 // A correct answer's graph turn already advances to the next problem (or
 // ends the session) in the same response as the feedback for the one just
@@ -341,7 +341,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <h1>Adaptive Math Tutor</h1>
+      <h1>AdaptMATH</h1>
       {error && <div className="error-banner">{error}</div>}
 
       {pendingRestore ? (

@@ -1,4 +1,4 @@
-# Adaptive math tutor: revision plan
+# AdaptMATH: revision plan
 
 Target: Nerdy AI Hackathon submission, Sep 18. Seven days from Sep 11.
 

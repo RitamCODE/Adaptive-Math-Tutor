@@ -1,4 +1,4 @@
-# Adaptive math tutor: project context
+# AdaptMATH: project context
 
 Read this fully before writing any code. This file is the source of truth for architecture and scope. If a task seems to require deviating from it (new dependency, new agent, new LLM call), stop and ask first rather than proceeding.
 

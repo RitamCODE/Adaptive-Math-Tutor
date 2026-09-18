@@ -61,7 +61,7 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Adaptive Math Tutor event log
+# AdaptMATH event log
 /event_log.db
 
 # Flask stuff:

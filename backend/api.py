@@ -37,7 +37,7 @@ from backend.models.state import EngagementState, LastResponse, Misconception, P
 from backend.nodes.problem_gen import generate_problem
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH, GROUP_DISPLAY_NAMES
 
-app = FastAPI(title="Adaptive Math Tutor API")
+app = FastAPI(title="AdaptMATH API")
 # FRONTEND_ORIGIN lets a deployed frontend (e.g. a Vercel URL) through CORS
 # without dropping the local Vite dev server origins below.
 _extra_origin = os.environ.get("FRONTEND_ORIGIN")

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-18 — Renamed the app to AdaptMATH
+
+Renamed the product from "Adaptive Math Tutor" to "AdaptMATH" across the on-screen header, browser
+tab title, FastAPI docs title, `localStorage` session key, the `adaptmath` Python package name
+(and regenerated `uv.lock`), and every README/doc heading, per the user's request. The git repo
+and directory name stay `Adaptive-Math-Tutor`.
+
 ## 2026-09-18 — Deployed to Railway (backend) + Vercel (frontend)
 
 Made `API_BASE`/CORS `allow_origins` env-var-driven (`VITE_API_BASE`, `FRONTEND_ORIGIN`) instead of

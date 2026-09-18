@@ -1,4 +1,4 @@
-# UI Design — Adaptive Math Tutor
+# UI Design — AdaptMATH
 
 Planning doc only. No component or CSS files are touched by this doc — it exists so the
 design direction can be reviewed before any frontend implementation begins, per

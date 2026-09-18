@@ -1,6 +1,6 @@
-# Adaptive Math Tutor — Frontend
+# AdaptMATH — Frontend
 
-A minimal browser UI for the adaptive math tutor: problem display, answer input, skill map, and XP/streak tracking, driven entirely by the FastAPI backend in `../backend`.
+A minimal browser UI for AdaptMATH: problem display, answer input, skill map, and XP/streak tracking, driven entirely by the FastAPI backend in `../backend`.
 
 ## Stack
 

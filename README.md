@@ -1,4 +1,4 @@
-# Adaptive Math Tutor
+# AdaptMATH
 
 A K-5 adaptive math learning app built for the Nerdy AI Hackathon (Prompt 01: K-5 Math Game).
 

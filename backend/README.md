@@ -1,4 +1,4 @@
-# Adaptive Math Tutor — Backend
+# AdaptMATH — Backend
 
 A deterministic LangGraph state machine (curriculum, problem generation, grading, mastery tracking) wrapped in a thin FastAPI layer for the browser frontend in `../frontend`. Per the project's hard constraints (see root `CLAUDE.md`), grading, mastery updates, and curriculum selection are pure functions with no LLM involved anywhere in that path — the only LLM calls in this backend are four narrative touchpoints, isolated in `llm/narrative.py`. This file documents how the pieces actually fit together; `CLAUDE.md` remains the source of truth for scope and constraints.
 
