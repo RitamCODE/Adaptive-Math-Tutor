@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-18 — Deployed to Railway (backend) + Vercel (frontend)
+
+Made `API_BASE`/CORS `allow_origins` env-var-driven (`VITE_API_BASE`, `FRONTEND_ORIGIN`) instead of
+hardcoded to localhost, and added a `Procfile` so Railway's Railpack builder finds the uvicorn start
+command (it doesn't auto-detect a nested `backend.api:app` module). Backend runs as a single Railway
+replica/worker, matching the in-memory `_SESSIONS` constraint. Verified end to end in a real browser
+against the live URLs: session start, wrong-then-correct retry ladder, refresh-resume, and the
+`?seed=fluent` deep link all work cross-origin. LLM narrative touchpoints and LangSmith tracing are
+pending new API keys (the originals were exposed in a terminal session and revoked).
+
 ## 2026-09-17 — Simulated-learner results added to README, full data in new KNOWN_GAPS.md
 
 Added a README section reporting the eval's headline finding (engine-confirmed mastery, not

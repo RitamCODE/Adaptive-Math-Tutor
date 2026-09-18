@@ -20,6 +20,7 @@ frontend fetches right after rendering the instant verdict.
 """
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -37,9 +38,12 @@ from backend.nodes.problem_gen import generate_problem
 from backend.skills.skill_graph import DEFAULT_SKILL_GRAPH, GROUP_DISPLAY_NAMES
 
 app = FastAPI(title="Adaptive Math Tutor API")
+# FRONTEND_ORIGIN lets a deployed frontend (e.g. a Vercel URL) through CORS
+# without dropping the local Vite dev server origins below.
+_extra_origin = os.environ.get("FRONTEND_ORIGIN")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"] + ([_extra_origin] if _extra_origin else []),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

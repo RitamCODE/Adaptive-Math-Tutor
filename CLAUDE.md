@@ -407,3 +407,4 @@ Verification for all of the above lives in `docs/CHECKLIST.md`. Flag items as re
 ## Things to keep in mind
 
 - after testing in each session always turn off the backend and the frontend
+- Do not touch my env files
