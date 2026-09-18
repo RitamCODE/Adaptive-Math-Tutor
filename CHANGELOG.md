@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-18 — Wired Railway + Vercel to auto-deploy from GitHub `main`
+
+Both platforms had only ever been deployed manually via CLI (`vercel`/`railway up`); a push to
+`main` did nothing. Vercel already had its GitHub App connected but its Root Directory setting was
+unset, so the last two auto-triggered builds had been silently failing (`vite: command not found`,
+building from the repo root instead of `frontend/`) — fixed by setting Root Directory to `frontend`
+in Project Settings and adding `frontend/vercel.json` to pin the framework/build config in code.
+Railway had no GitHub connection at all; connected it (Settings → Source) to
+`RitamCODE/Adaptive-Math-Tutor` on `main` with Root Directory `/`, matching the existing `Procfile`.
+Verified end to end: a real push to `main` auto-built and deployed on both platforms, and the live
+Vercel frontend successfully loaded a problem from the live Railway backend (CORS/env vars intact).
+
 ## 2026-09-18 — Renamed the app to AdaptMATH
 
 Renamed the product from "Adaptive Math Tutor" to "AdaptMATH" across the on-screen header, browser
