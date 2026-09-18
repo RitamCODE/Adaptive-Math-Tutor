@@ -353,17 +353,4 @@ Say no to these now so they do not eat Day 5:
 
 ---
 
-## The demo video spine (2 to 3 min)
-
-1. Child gets `86 + 94` wrong with `1017`. App names the misconception instead of the answer. **(0:00 to 0:30)**
-2. Second attempt: blocks open showing their own error, ten ones snap into one ten. **(0:30 to 1:00)**
-3. Third attempt correct. Skill node lights up on the map. **(1:00 to 1:20)**
-4. Cut to a different session: high mastery, blocks gone, abstract problems only. Say the sentence: "same engine, it decided this child no longer needs the blocks." **(1:20 to 1:50)**
-5. Graph diagram, 20 seconds, narrate the branching. **(1:50 to 2:10)**
-6. End-of-quest report. Misconceptions repaired, by name. **(2:10 to 2:30)**
-
-Lead with the wrong answer, not the right one. Every other submission will open with a correct answer and confetti.
-
----
-
 Verification lives in `docs/CHECKLIST.md`. Run it as a manual pass on Day 6 and again before recording.
