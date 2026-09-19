@@ -185,7 +185,7 @@ None of these run inside the graph — they're all invoked from `api.py`, *after
 |---|---|---|
 | `/sessions` | POST | start a new session for a `student_id` |
 | `/sessions/{id}` | GET | resume an existing session |
-| `/sessions/seed/{name}` | POST | install one of the three fixed demo profiles (`new`/`struggling`/`fluent`) without playing through a real session — backs the `?seed=` URL param |
+| `/sessions/seed/{name}` | POST | install one of the four fixed demo profiles (`new`/`struggling`/`fluent`/`borrowing`) without playing through a real session — backs the `?seed=` URL param |
 | `/sessions/{id}/restore` | POST | reinstall a session's mastery/XP/misconceptions from the frontend's own cached (correct-answer-free) snapshot after the backend process restarts and loses its in-memory session store |
 | `/sessions/{id}/answer` | POST | grade an answer, advance the turn, return the next state |
 | `/sessions/{id}/narrative` | GET | fetch the four LLM touchpoints for the most recent answer, once they resolve |

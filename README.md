@@ -154,7 +154,6 @@ frontend/        Vite + React UI — full file structure in frontend/README.md
 docs/
   revision-plan.md   the original revision plan, kept as a frozen historical record
   CHECKLIST.md       manual, per-item verification checklist for that plan
-  DOCS_AUDIT.md      recurring pass checking every doc in the repo against the actual code
 CLAUDE.md        source-of-truth spec: hard constraints, exact algorithms, copy limits, non-goals
 UI_DESIGN.md     the frozen design proposal behind the current frontend
 KNOWN_GAPS.md    the synthetic-student evaluation in full — every profile, every skill, the statistics

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-18 — Doc audit: untracked DOCS_AUDIT.md, fixed two stale-content bugs
+
+Stopped tracking `docs/DOCS_AUDIT.md` in git (added to `.gitignore` alongside
+`docs/DEMO_GUIDE.md`/`docs/ENGINE_DIAGRAM.md`, kept on disk): it's a self-audit log of the
+other docs, not product documentation, was never linked from README's "Further reading,"
+and was itself two days stale. Removed its line from `README.md`'s repository-layout
+listing. Fixed two real stale-doc bugs found in the pass: `backend/README.md`'s seed-endpoint
+row was missing the `borrowing` profile (present in code and in every other doc that lists
+the seeds), and `frontend/README.md` never mentioned the physical-keyboard/draggable-cursor
+number pad input shipped earlier the same day.
+
 ## 2026-09-18 — README: real screenshots, a demo video link, and collapsible detail
 
 Captured real screenshots and one GIF from running local sessions via browser automation against

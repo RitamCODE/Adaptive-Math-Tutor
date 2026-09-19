@@ -70,6 +70,9 @@ db.sqlite3-journal
 /docs/engine_diagram.png
 /docs/engine_diagram_simple.png
 
+# Doc-QA working notes, not project documentation
+/docs/DOCS_AUDIT.md
+
 # Flask stuff:
 instance/
 .webassets-cache

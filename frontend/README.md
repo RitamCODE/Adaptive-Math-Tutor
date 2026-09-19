@@ -24,7 +24,9 @@ src/
   components/
     StudentIdForm.jsx      start-session form
     ProblemCard.jsx         current problem + flavor text + feedback + NumberPad + manipulative canvas
-    NumberPad.jsx           on-screen digit/backspace/submit pad — no <input type="number"> anywhere
+    NumberPad.jsx           on-screen digit/backspace/submit pad — no <input type="number"> anywhere;
+                             also accepts physical-keyboard digits/Backspace/Enter and a draggable
+                             text cursor on the answer display
     FeedbackBanner.jsx      correct/incorrect feedback + misconception hint + narrative copy
     SkillTrailMap.jsx       skill progress as a winding trail of locked/current/mastered nodes,
                              grouped under the two parent skills (Addition, Subtraction) with an
@@ -70,7 +72,7 @@ On mount, `App` checks `localStorage` for a cached `session_id`. If one exists, 
 
 ### Answering a problem
 
-A student types on `NumberPad` (digits, backspace, submit — no `<input type="number">` anywhere, per `CLAUDE.md`'s constraint that an answer must be computed, not spun to). Submitting calls `ProblemCard`'s `onSubmit(answer)`. `App` computes `time_taken_sec` from `problemStartRef` (reset via a `useEffect` keyed on `current_problem.problem_id`, so it resets exactly when a new problem is served, but *not* on a same-problem retry), calls `submitAnswer(sessionId, answer, timeTakenSec)`, and on success:
+A student types on `NumberPad` (digits, backspace, submit — no `<input type="number">` anywhere, per `CLAUDE.md`'s constraint that an answer must be computed, not spun to). `NumberPad` also accepts a physical keyboard (digits, Backspace, Enter) and a draggable text cursor on the answer display; pure on-screen tapping stays byte-identical to before, and the first keyboard keystroke or cursor drag switches that answer to standard left-to-right cursor editing until the next problem resets it back to the default right-to-left, column-aware auto-placement. Submitting calls `ProblemCard`'s `onSubmit(answer)`. `App` computes `time_taken_sec` from `problemStartRef` (reset via a `useEffect` keyed on `current_problem.problem_id`, so it resets exactly when a new problem is served, but *not* on a same-problem retry), calls `submitAnswer(sessionId, answer, timeTakenSec)`, and on success:
 - updates `sessionData` — re-renders `StatsBar` (xp/streak) and `SkillTrailMap` (node states) with the new values, and `Mascot` (growth stage, from the count of mastered skills)
 - sets `feedback` and `justAdvanced` (from `next_action === "advance_skill"`) — renders `FeedbackBanner`, which shows the mastery-moment/boss-battle lines only when `justAdvanced` is true, and drives `reaction` (above)
 - fires `getNarrative(sessionId)` fire-and-forget, off the response that already rendered — when it resolves, its fields are merged into `feedback` (guarded on `problem_id` still matching, so a narrative that resolves after the student has already moved to a new problem doesn't get attached to the wrong one)
