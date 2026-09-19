@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-19 — Fix: `borrowing` seed's same mastery-flip bug, one prerequisite hop further out
+
+Same root cause as the `struggling` seed fix below, found in a second seed after the user
+reported an unexpected "Quest complete" screen while working on `subtraction_borrow`. The
+`borrowing` seed baked `subtraction_no_borrow` at 0.9 and `addition_carry` at 0.95 — neither
+a fixed point of `update_mastery` — for the same "should always read as already mastered"
+prerequisite role that `addition_no_carry`'s existing 1.0 already handled safely. Since
+`subtraction_borrow`'s prerequisite chain is `subtraction_no_borrow -> addition_carry ->
+addition_no_carry` (skill_graph.py), a demotion into either vulnerable skill let a single
+wrong answer both un-master it and — being the session's 4th consecutive wrong overall —
+end the quest in the same turn, which is what read as a random closure. Changed both to
+1.0. Added `backend/tests/test_subtraction_no_borrow_mastery_flip.py` and confirmed the fix
+end-to-end in the browser against the exact reported sequence; the fatigue-stop end-of-quest
+itself is unchanged by design, only the incorrect un-mastering is fixed.
+
 ## 2026-09-19 — Second doc-audit pass: frontend/backend READMEs had drifted further than caught before
 
 A closer line-by-line diff against the actual code (prompted by re-checking docs after the

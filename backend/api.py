@@ -385,8 +385,8 @@ _SEED_PROFILES: dict[str, dict] = {
     "borrowing": dict(
         skill_mastery={
             "addition_no_carry": 1.0,
-            "addition_carry": 0.95,
-            "subtraction_no_borrow": 0.9,
+            "addition_carry": 1.0,
+            "subtraction_no_borrow": 1.0,
             "subtraction_borrow": 0.3,
         },
         misconception_log=[],
@@ -394,6 +394,14 @@ _SEED_PROFILES: dict[str, dict] = {
         # All three prerequisites need a completed run alongside their mastery
         # values, or the sustained-mastery gate reads them as unmastered and
         # `subtraction_borrow` shows as locked on the trail map.
+        # 1.0 specifically, not just "high" (previously 0.95/0.9): it's a fixed
+        # point of update_mastery (the (1-p) term zeroes out p_slip/p_guess),
+        # so it survives any number of wrong answers. subtraction_borrow's
+        # prerequisite chain (subtraction_no_borrow -> addition_carry ->
+        # addition_no_carry, see skill_graph.py) means any of these three can
+        # get demoted into during a resurface window — a single wrong answer
+        # there used to un-master the demoted skill and, since it's also the
+        # session's 4th consecutive wrong overall, end the quest outright.
         mastery_run={"addition_no_carry": 3, "addition_carry": 3, "subtraction_no_borrow": 3},
         digit_level={"subtraction_borrow": 1},
         problems_completed=9,
