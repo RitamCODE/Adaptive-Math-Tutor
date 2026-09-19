@@ -66,6 +66,9 @@ db.sqlite3-journal
 
 # Demo recording prep, not project documentation
 /docs/DEMO_GUIDE.md
+/docs/ENGINE_DIAGRAM.md
+/docs/engine_diagram.png
+/docs/engine_diagram_simple.png
 
 # Flask stuff:
 instance/
