@@ -341,7 +341,7 @@ def _install_seeded_state(
 # `new` needs no entry here: it's just today's ordinary blank start.
 _SEED_PROFILES: dict[str, dict] = {
     "struggling": dict(
-        skill_mastery={"addition_no_carry": 0.9, "addition_carry": 0.3},
+        skill_mastery={"addition_no_carry": 1.0, "addition_carry": 0.3},
         misconception_log=[
             Misconception(skill="addition_carry", bug_type="add_concat_no_carry", timestamp=datetime.now(timezone.utc))
         ],
@@ -353,9 +353,15 @@ _SEED_PROFILES: dict[str, dict] = {
         # branch in route_after_engagement) one answer ahead of demotion,
         # ending the session before resurfacing could ever be shown.
         engagement=EngagementState(streak=0, xp=10, frustration_signal=False, consecutive_wrong=0),
-        # The prerequisite needs a full mastery run installed alongside its 0.9,
+        # The prerequisite needs a full mastery run installed alongside its 1.0,
         # or the sustained-mastery gate reads it as unmastered and the trail map
         # shows addition_carry — the skill this seed actually lands on — locked.
+        # 1.0 specifically, not just "high": it's a fixed point of update_mastery
+        # (the (1-p) term zeroes out p_slip/p_guess), so it survives any number
+        # of wrong answers during the resurface window — matching the other two
+        # seeds' use of 1.0 for this same prerequisite-mastery role. A prior
+        # value of 0.9 here was not a fixed point and would flip to unmastered
+        # after a single wrong answer on the demoted addition_no_carry problem.
         mastery_run={"addition_no_carry": 3},
         problems_completed=3,
         quest_length=16,

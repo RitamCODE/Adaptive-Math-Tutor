@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-19 — Fix: `struggling` seed's addition_no_carry mastery un-mastering mid-quest
+
+The `struggling` seed baked `addition_no_carry` at mastery 0.9, which isn't a fixed point
+of the BKT update — a single wrong answer during the seed's own resurface path (fail
+`addition_carry` 3x, demote to `addition_no_carry`) dropped it to ~0.56 and zeroed its
+mastery run, un-mastering a skill the trail map had just shown as mastered. Changed to
+1.0, matching the `borrowing`/`fluent` seeds' existing convention for this role — 1.0 is an
+exact fixed point of `update_mastery`, so it survives any number of wrong answers, not just
+the four CLAUDE.md's sticky-mastery claim describes. Added
+`backend/tests/test_addition_no_carry_mastery_flip.py` as a repro and regression guard.
+
 ## 2026-09-18 — Doc audit: untracked DOCS_AUDIT.md, fixed two stale-content bugs
 
 Stopped tracking `docs/DOCS_AUDIT.md` in git (added to `.gitignore` alongside
