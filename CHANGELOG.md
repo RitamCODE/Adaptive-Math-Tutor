@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-19 — CLAUDE.md's Project structure rewritten to a real, current tree
+
+The tree was a snapshot from mid-revision (`[new]` tags marking what the revision plan was
+about to add) and had never been reconciled since: missing `backend/eval/`,
+`addition_no_carry.py`/`subtraction_no_borrow.py`/`_arithmetic.py`/`cross_cutting.py`,
+`api.py`, and most of `frontend/src/`. Rewrote it to the actual current layout. To keep it
+from going stale the same way again, per-test and per-component listings (the parts that
+change most often) now point at `backend/README.md`'s Tests table and `frontend/README.md`'s
+file structure instead of being enumerated here too — matching the "one fact, one file"
+principle the 2026-09-18 README restructure already established.
+
 ## 2026-09-19 — Fix: `borrowing` seed's same mastery-flip bug, one prerequisite hop further out
 
 Same root cause as the `struggling` seed fix below, found in a second seed after the user

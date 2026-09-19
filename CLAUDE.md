@@ -44,48 +44,58 @@ This applies to every part of the plan, including verification and edge cases. N
 
 ## Project structure
 
+The full, current tree — kept in sync with the code, unlike a plan snapshot. Listings that would
+just duplicate another file (every test, every component) point at that file instead, so there's
+exactly one place to keep each one current.
+
 ```
 adaptive-math-tutor/
   backend/
-    graph.py              # LangGraph wiring, state schema, conditional edges
-    nodes/
-      curriculum.py        # select_next_skill()
-      problem_gen.py       # generate_problem()
-      diagnosis.py         # grade_and_diagnose(), detector dispatch
-      remediation.py       # build_remediation()  [new]
-      engagement.py        # decide_engagement()
+    graph.py              # LangGraph wiring: state schema, conditional edges
+    api.py                # FastAPI app, the only HTTP-facing layer
     models/
-      state.py             # SessionState, Problem, DiagnosisResult, etc. (pydantic)
-      bkt.py               # BKTParams, update_mastery()
+      state.py             # SessionState, Problem, DiagnosisResult, Remediation, etc. (pydantic)
+      bkt.py               # BKTParams, MASTERY_THRESHOLD, update_mastery(), is_mastered()
+    nodes/
+      curriculum.py         # select_next_skill()
+      problem_gen.py        # generate_problem()
+      diagnosis.py          # grade_and_diagnose(), detector dispatch
+      remediation.py        # build_remediation()
+      engagement.py         # decide_engagement()
     skills/
-      skill_graph.py       # prerequisite DAG
-      addition_carry.py    # templates + detectors for this skill
-      subtraction_borrow.py
-      _difficulty_ladder.py # digit-width progression, independent of BKT mastery  [new]
+      skill_graph.py            # SkillGraph, DEFAULT_SKILL_GRAPH: DAG + skill groups
+      _arithmetic.py             # shared pure helpers used by every skill module
+      _difficulty_ladder.py      # digit-width progression, independent of BKT mastery
+      addition_no_carry.py       # templates (no bug rules)
+      addition_carry.py          # templates + bug rules
+      subtraction_no_borrow.py   # templates (no bug rules)
+      subtraction_borrow.py      # templates + bug rules
+      cross_cutting.py           # skill-agnostic: digit_reversal, place_value_confusion
     content/
-      misconceptions.json  # hint copy + visual payload, keyed by bug_type  [new]
+      misconceptions.json   # hint copy + visual payload, keyed by bug_type
     logging/
-      events.py            # one row per submission  [new]
+      events.py             # SQLite event log, one row per submission
     llm/
-      narrative.py         # the four LLM touchpoints, isolated here only
-    tests/
-      test_bkt.py
-      test_bug_rules.py
-      test_curriculum.py
-      test_retry_ladder.py [new]
-      test_mastery_gate.py [new]
-      test_difficulty_ladder.py [new]
+      narrative.py          # the four LLM touchpoints, isolated here only
+    eval/                  # offline adaptive-vs-baseline eval harness, not part of the shipped
+                            # app: synthetic_learner.py, driver.py, baseline.py, simulate.py —
+                            # full results in KNOWN_GAPS.md
+    tests/                 # one file per module — full list in backend/README.md's Tests table
   frontend/
-    (problem display, number pad, manipulative canvas, skill map, XP/streak)
-    src/components/ColumnArithmetic.jsx  # stacked equation + blocks in one grid
-    src/components/StackedEquation.jsx   # stacked equation, no blocks, for the two non-regrouping skills
-    src/lib/columnBoard.js   # pure board state: digits, places, borrow/carry
-    src/lib/remediation.js   # bandFromMastery(): which remediation a wrong answer earns
-    src/lib/copy.js          # sentence-safe cap for the LLM narrative copy limits
+    src/
+      App.jsx              # the single state owner
+      api.js               # fetch wrappers for the backend endpoints
+      constants.js         # skill display names, presentation only
+      components/          # presentational — full list in frontend/README.md's file structure
+      lib/                 # pure helpers (arithmetic, columnBoard, remediation bands, praise,
+                            # copy caps, sound) — full list in frontend/README.md's file structure
   docs/
-    revision-plan.md
-    CHECKLIST.md
-  CLAUDE.md
+    revision-plan.md      # the original revision plan, kept as a frozen historical record
+    CHECKLIST.md           # manual, per-item verification checklist for that plan
+  CLAUDE.md               # this file
+  UI_DESIGN.md            # the frozen design proposal behind the current frontend
+  KNOWN_GAPS.md           # the synthetic-student evaluation in full
+  CHANGELOG.md            # what actually landed, session by session
 ```
 
 **Detectors are code, copy is data.** Detector functions stay in the per-skill Python modules where they already live. The student-facing hint string and the visual payload for each `bug_type` move into `misconceptions.json`. Adding a hint or retuning wording must not require touching engine code.
