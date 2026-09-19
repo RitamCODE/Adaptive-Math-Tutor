@@ -209,10 +209,7 @@ See `../frontend/README.md` for the frontend's side of this contract in detail. 
 
 ## Running it
 
-```bash
-# from the repo root
-uv run uvicorn backend.api:app --reload --port 8000
-```
+See the root [`README.md`](../README.md#running-it-locally) — the backend and frontend dev servers must run together (CORS is locked to the Vite port above), and that section also covers the optional `OPENAI_API_KEY`/`LANGSMITH_*` env vars.
 
 ## Tests (`tests/`)
 

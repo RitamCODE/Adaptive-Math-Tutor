@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-18 — README: real screenshots, a demo video link, and collapsible detail
+
+Captured real screenshots and one GIF from running local sessions via browser automation against
+the actual app — not mockups or a canned animation — and added them under a new "See it in
+action" section in `README.md`, saved to `docs/screenshots/`: a carrying mistake with the
+base-ten blocks open (regrouping upward), a borrowing mistake's hint-only first attempt
+(regrouping never opens on attempt 1), and a real pointer drag breaking a borrowed ten into ten
+loose ones (regrouping downward) — recorded frame-by-frame with the GIF-recording tool and
+verified frame-by-frame afterward, since the automated screenshot tool used to preview the page
+doesn't advance GIF playback and made the file look falsely static at first. A generic "fresh
+session" screenshot and an end-of-quest screenshot were dropped from this section
+— the former added little, and the latter surfaced a real bug worth its own fix later: the
+fatigue-stop ending a session shows "no misconceptions repaired" even when the same report's
+"still practicing" list is non-empty. Added the unlisted YouTube walkthrough link next to the
+existing note about why the live deployed URL isn't posted here. Added a `Contents` line with
+anchor links under the title, and wrapped the full 12-node routing diagram and the exhaustive
+working/not-yet-built checklist in `<details>` blocks so the page stays scannable while the
+detail is still one click away.
+
+## 2026-09-18 — Split the README into a short overview and a developer reference
+
+Restructured the root `README.md` around a single strong divider: a short overview section
+above it (the pitch, a simplified Mermaid state-machine diagram, condensed feature highlights,
+the synthetic-student eval table) and a "Developer reference" section below (the full 12-node
+routing diagram, repository layout, run instructions, status checklist). Added a note
+explaining the deployed URL lives only on the hackathon submission form, not in this repo,
+since it spends a shared OpenAI credit budget that a burst of judge traffic could exhaust.
+Removed the duplicated turn-flow diagram, LLM-touchpoint table, and full directory trees that
+had been copy-pasted across `README.md`/`backend/README.md`/`frontend/README.md`, replacing
+them with cross-links so each fact lives in exactly one file; the two sub-READMEs' "Running it"
+sections now point at the root's single canonical set of commands instead of repeating them.
+
 ## 2026-09-18 — Keyboard input and a draggable cursor for the number pad
 
 Added physical-keyboard support (digits, Backspace, Enter) and a draggable text cursor to the

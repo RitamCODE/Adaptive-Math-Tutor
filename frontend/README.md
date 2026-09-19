@@ -8,19 +8,7 @@ Vite + plain React. No router, no state-management library, no CSS framework. Pe
 
 ## Running it
 
-```bash
-npm install
-npm run dev
-```
-
-Serves on `http://localhost:5173`. This app **requires the backend running separately** at `http://localhost:8000`:
-
-```bash
-# from the repo root
-uv run uvicorn backend.api:app --reload --port 8000
-```
-
-`src/api.js` hardcodes that base URL, and the backend's CORS allowlist (`backend/api.py`) only permits `http://localhost:5173` / `127.0.0.1:5173` — if you serve the frontend on a different port, both sides need updating.
+See the root [`README.md`](../README.md#running-it-locally) for the exact commands — this app **requires the backend running separately**, since `src/api.js` hardcodes `http://localhost:8000` as its base URL and the backend's CORS allowlist (`backend/api.py`) only permits `http://localhost:5173` / `127.0.0.1:5173`. If you serve the frontend on a different port, both sides need updating together.
 
 ## File structure
 
