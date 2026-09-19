@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-19 — Second doc-audit pass: frontend/backend READMEs had drifted further than caught before
+
+A closer line-by-line diff against the actual code (prompted by re-checking docs after the
+seed-mastery fix below) found more drift than the previous pass caught. `frontend/README.md`
+still described the base-ten-blocks component as `BundlingSticks.jsx` (renamed to
+`ColumnArithmetic.jsx` on 2026-09-16) in both its file tree and its "Manipulatives" prose, and
+was missing `StackedEquation.jsx`, `ResumeSessionPrompt.jsx`, `lib/columnBoard.js`, and
+`lib/copy.js` entirely. Its "Start / resume a session" section still described the old
+silent-fallback-to-start-form behavior, predating `ResumeSessionPrompt` (2026-09-17), and its
+"Known limitations" section overstated that a backend restart "ends every in-progress
+session" when in fact mastery/XP/misconceptions survive via `/restore` — only the exact
+in-flight problem doesn't. Added the missing `displayData`/`pendingRestore` state to the
+"App holds" list. `backend/README.md`'s directory map and Tests table were both missing the
+entire `backend/eval/` harness and its `test_eval_simulation.py` (added 2026-09-17), and its
+Tests table was missing `test_addition_no_carry_mastery_flip.py` (added by the fix below).
+`README.md`'s collapsed "Working" checklist listed seeds as `new|struggling|fluent`, missing
+`borrowing`, while the "What's built" section above it already had all four correctly.
+
 ## 2026-09-19 — Fix: `struggling` seed's addition_no_carry mastery un-mastering mid-quest
 
 The `struggling` seed baked `addition_no_carry` at mastery 0.9, which isn't a fixed point

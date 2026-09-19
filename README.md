@@ -205,7 +205,7 @@ Everything under [What's built](#whats-built) above is shipped and working. The 
 - Vite + React frontend end to end: number pad, skill trail map, growth-stage mascot, responsive mobile/tablet/laptop layout
 - Three manipulatives (bundling sticks, number line, ten-frame) delivered as remediation rather than default furniture: never shown on attempt 1, always available on request, and CRA-fading off live BKT mastery
 - A real end-of-quest report (skills mastered, misconceptions repaired by name, problems solved, elapsed time, "Play again") and three synthesized sound effects
-- Seeded demo profiles (`?seed=new|struggling|fluent`) and refresh-mid-session/backend-restart recovery via `localStorage`
+- Seeded demo profiles (`?seed=new|struggling|fluent|borrowing`) and refresh-mid-session/backend-restart recovery via `localStorage`
 - Skill resurfacing: a demoted skill returns once after two correct answers on its prerequisite, per `docs/revision-plan.md` §7.3
 
 **Not yet built** (see `docs/revision-plan.md` Parts 4–7 and the open items in `docs/CHECKLIST.md`):

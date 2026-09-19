@@ -33,6 +33,12 @@ backend/
     events.py                SQLite event log, one row per submission (signal-bearing or not)
   llm/
     narrative.py             the four LLM touchpoints — the only file allowed to reference an LLM client
+  eval/
+    synthetic_learner.py     hidden-mastery/slip/guess/learning-rate synthetic students
+    driver.py                 drives synthetic students turn-by-turn through the real compiled graph
+    baseline.py               fixed-schedule, fixed-difficulty comparison condition
+    simulate.py                runs both conditions across ability profiles, reports the comparison
+                              — offline evaluation only, not part of the shipped app; see KNOWN_GAPS.md
   tests/                    one file per module, see "Tests" below
 ```
 
@@ -216,6 +222,7 @@ See the root [`README.md`](../README.md#running-it-locally) — the backend and 
 | File | Covers |
 |---|---|
 | `test_api.py` | the HTTP endpoints, the seed profiles, and the sustained-mastery gate as the wire format reports it |
+| `test_addition_no_carry_mastery_flip.py` | regression guard for a seed-data bug: a seeded mastery value that isn't a fixed point of `update_mastery` can un-master a skill on a single wrong answer during the resurface window |
 | `test_bkt.py` | `update_mastery()` posterior/transit math |
 | `test_mastery_gate.py` | `is_mastered()`, the `mastery_run` bookkeeping that feeds it, and the routing that depends on it (advance, and both quest-end conditions) |
 | `test_difficulty_ladder.py` | `advance_digit_level()`'s general and narrowest-tier gates, `pick_combo()`'s repeat-avoidance/fallback, and that `addition_carry`/`subtraction_borrow` skip the narrowest-tier logic entirely |
@@ -226,6 +233,7 @@ See the root [`README.md`](../README.md#running-it-locally) — the backend and 
 | `test_graph.py` | a scripted session driving `graph.invoke()` end to end |
 | `test_misconceptions_catalog.py` | every `bug_type` in `content/misconceptions.json` has a hint ≤12 words, machine-checked |
 | `test_narrative.py` | the four LLM touchpoints' fail-open behavior and isolation |
+| `test_eval_simulation.py` | sanity checks for `eval/` — true/engine-mastered metrics stay independent of the baseline's routing patches, and the fixed schedule never falls back to a locked skill |
 | `test_problem_gen.py` | per-skill template generators |
 | `test_retry_ladder.py` | the 3-attempt retry ladder, prerequisite demotion, and quest/fatigue termination routing |
 | `test_skill_graph.py` | the prerequisite DAG (`is_unlocked`, `topological_order`) and the skill groups (`group_of`, `is_group_mastered`, `all_groups_mastered`) |

@@ -33,14 +33,23 @@ src/
                              "n of 2" count per group
     StatsBar.jsx            XP, streak, frustration note
     Mascot.jsx              growth-stage companion that reacts to answers (idle/thinking/correct/incorrect)
-    BundlingSticks.jsx      base-10-blocks manipulative for addition-with-carrying and subtraction-with-borrowing
+    ColumnArithmetic.jsx    stacked equation + base-10 blocks in one grid, for addition_carry and
+                             subtraction_borrow — the two skills that regroup
+    StackedEquation.jsx     the same stacked-equation layout with no blocks and no answer row, for
+                             addition_no_carry and subtraction_no_borrow, which never regroup
     NumberLine.jsx          manipulative for the four number_line/* misconceptions (off-by-one, operator
                              misread, reversed operands, digit reversal)
     TenFrame.jsx            opt-in scaffold for addition_no_carry (which has no bug rules of its own,
                              so nothing can auto-open it — it appears only on request)
     SessionSummary.jsx      end-of-quest report — skills mastered, misconceptions repaired, "Play again"
+    ResumeSessionPrompt.jsx  shown when a cached session 404s against a restarted backend — lets the
+                             student choose "Resume" (reinstall the cached snapshot) or "Start fresh"
   lib/
     arithmetic.js           parses `question` strings into place-value blocks for the manipulatives
+    columnBoard.js           pure column-arithmetic board state (digits, places, regrouping) behind
+                             `ColumnArithmetic.jsx` — no JSX, checkable on its own
+    copy.js                  sentence-boundary word cap for the LLM narrative copy limits (mastery/
+                             reward/boss-battle text), so a truncation never cuts mid-clause
     remediation.js           bandFromMastery(): which remediation a wrong answer earns —
                              open / offered / hint-only, at the 0.4 and 0.7 mastery bands
     praise.js                the deterministic four-branch per-problem praise lookup (speed/named-skill/
@@ -54,12 +63,14 @@ src/
 `App.jsx` is the only component that holds state or talks to `api.js`. Everything under `components/` is presentational: it receives data as props and reports user actions through callback props (`onStart`, `onSubmit`). There's no context provider and no global store — data flows down as props, actions flow up as callbacks, and `App` is the single place that reconciles a callback with a new `fetch` call and a state update.
 
 `App` holds:
-- `sessionData` — the last `SessionResponse`/`AnswerResponse` from the backend (current problem, engagement, skill progress, session id, `next_action`)
+- `sessionData` — the latest truth from the backend the moment a response arrives (current problem, engagement, skill progress, session id, `next_action`)
+- `displayData` — what's actually rendered, held one step behind `sessionData` so the just-answered problem (and its feedback) gets a render frame before the next state appears; a correct answer's graph turn already advances past it in the same response, so without this delay the feedback would never be visible. Revealed after a fixed delay for an ordinary correct answer, or once the mastery-moment narrative resolves (capped at `NARRATIVE_WAIT_CAP_MS`) for a mastery transition
 - `feedback` — the `Feedback` object from the most recent answer (`null` before the first answer), later merged with whatever `getNarrative` resolves to
 - `justAdvanced` — set from `data.next_action === "advance_skill"` on each answer response; tells `FeedbackBanner` to show the mastery-moment and boss-battle lines alongside the ordinary correct message
 - `reaction` — derived from `feedback.correct`, drives both `Mascot`'s transient correct/incorrect pose and `ProblemCard`'s flash/shake/confetti, then reverts to `"idle"` after a fixed timeout
 - `loading` / `error` — request status
 - `resuming` — true only during the initial mount's `getSession` resume check, so nothing renders as "start a new session" for a frame before that resolves
+- `pendingRestore` — set on a 404-triggered recovery with a usable cached snapshot; renders `ResumeSessionPrompt` until the student picks "Resume" or "Start fresh" (see "Start / resume a session" below)
 - `problemStartRef` — a timestamp ref reset whenever the current problem's `problem_id` changes, used to measure `time_taken_sec`
 
 `api.js` is the only module that calls the backend. Its seven functions (`startSession`, `seedSession`, `restoreSession`, `getSession`, `submitAnswer`, `getNarrative`, `getMisconceptionCatalog`) are thin `fetch` wrappers against `API_BASE = "http://localhost:8000"` and throw on a non-2xx response so `App` can catch and surface `error`.
@@ -68,7 +79,7 @@ src/
 
 ### Start / resume a session
 
-On mount, `App` checks `localStorage` for a cached `session_id`. If one exists, it calls `getSession(id)` to resume; a 404 (e.g. the backend restarted and lost its in-memory session store) clears the cached id and falls back to the start form. With no cached id, `App` renders `StudentIdForm`, whose `onStart(studentId)` callback calls `startSession`, stores the returned `session_id` in `localStorage`, and sets `sessionData`.
+On mount, `App` checks `localStorage` for a cached `session_id`. If one exists, it calls `getSession(id)` to resume; a 404 (e.g. the backend restarted and lost its in-memory session store) does **not** silently fall back to a fresh start. If the cached snapshot still has a `current_problem`, `App` renders `ResumeSessionPrompt` and waits for the student to choose "Resume" (calls `restoreSession`, reinstalling mastery/XP/misconceptions from the same snapshot under the same session id) or "Start fresh" (clears `localStorage` and falls through to the start form) — only a snapshot with nothing usable to resume falls back automatically. With no cached id, `App` renders `StudentIdForm`, whose `onStart(studentId)` callback calls `startSession`, stores the returned `session_id` in `localStorage`, and sets `sessionData`.
 
 ### Answering a problem
 
@@ -81,7 +92,7 @@ Because a wrong answer on attempt 1 or 2 keeps the *same* `problem_id` (the retr
 
 ### Manipulatives and the end of a quest
 
-`ProblemCard` pins the **equation** at the top of the card (`position: sticky`, so the numerals never need scrolling to however tall the manipulative below grows) and renders the manipulative area underneath it. The three manipulatives (`BundlingSticks`, `NumberLine`, `TenFrame` — see the file structure above) are chosen by skill tag, and they are **remediation, not default furniture**:
+`ProblemCard` pins the **equation** at the top of the card (`position: sticky`, so the numerals never need scrolling to however tall the manipulative below grows) and renders the manipulative area underneath it. `ColumnArithmetic`/`StackedEquation` render the equation itself for all four skills (stacked in column form, blocks only for the two regrouping skills); `NumberLine` and `TenFrame` are the other two manipulatives (see the file structure above), chosen by skill tag, and all of them are **remediation, not default furniture**:
 
 - Nothing opens on attempt 1 of any problem, at any mastery. The backend withholds the `visual` field until attempt 2, and there is no low-mastery auto-open.
 - On a wrong, signal-bearing answer, `bandFromMastery` (`lib/remediation.js`, shared rather than copied per component) decides what the hint comes with: **below 0.4** the manipulative opens pre-seeded from the student's own wrong answer via `lib/arithmetic.js`; **0.4 to 0.7** it is highlighted and one tap away ("Show me the blocks") but stays closed; **above 0.7** the hint stands alone.
@@ -94,4 +105,4 @@ This frontend is coupled to `backend/api.py`'s response shapes (`SessionResponse
 
 ## Known limitations
 
-No auth — one student per browser, identified by whatever name is typed into the start form and cached in `localStorage`. Responsive layout covers standard mobile/tablet/laptop viewport reflow only (see `UI_DESIGN.md` at the repo root) — no native-app gestures, device detection, or installable/PWA behavior. Session state lives only in the backend's in-memory store, so restarting the backend process ends every in-progress session.
+No auth — one student per browser, identified by whatever name is typed into the start form and cached in `localStorage`. Responsive layout covers standard mobile/tablet/laptop viewport reflow only (see `UI_DESIGN.md` at the repo root) — no native-app gestures, device detection, or installable/PWA behavior. `SessionState` lives only in the backend's in-memory store, so restarting the backend process loses it — but not every in-progress session: `ResumeSessionPrompt` (see "Start / resume a session" above) reinstalls mastery, XP, and misconceptions from the browser's own cached snapshot via `/restore`. What doesn't survive is the exact in-flight problem and attempt count, since the pre-restart problem's answer was never sent to the client to reconstruct it from; a fresh problem on the same skill is generated instead.
